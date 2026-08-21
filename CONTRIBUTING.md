@@ -2,11 +2,11 @@
 
 ## Development setup
 
-On Fedora:
+Use the dependency helper and install the packages it lists for the current
+distribution:
 
 ```sh
-sudo dnf install gcc-c++ cmake qt6-qtbase-devel kf6-kidletime-devel \
-  python3-gobject gtk4 vte291-gtk4 gtk4-layer-shell desktop-file-utils
+./scripts/dependency-hint.sh
 ```
 
 Build the native watcher out of tree:
@@ -27,7 +27,8 @@ kde-ascii-saverctl preview
 ```sh
 python3 -m py_compile app.py ctl.py
 bash -n install.sh uninstall.sh bin/kde-ascii-saver \
-  bin/kde-ascii-saverctl bin/kde-ascii-saver-watcher
+  bin/kde-ascii-saverctl bin/kde-ascii-saver-watcher \
+  scripts/dependency-hint.sh
 python3 -m json.tool config/config.json >/dev/null
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
@@ -50,5 +51,7 @@ Plasma 6 session with:
 - monitor hotplug while running;
 - service restart while the desktop is already idle; and
 - install, upgrade, disable/enable, and uninstall flows.
+- both the systemd user-service and XDG session-autostart paths when changing
+  session lifecycle code.
 
 Never weaken or replace KScreenLocker as part of a visual feature.

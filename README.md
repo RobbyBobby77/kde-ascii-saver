@@ -38,22 +38,21 @@ click, or scroll event.
 
 ## Status
 
-Version `0.1.0` is an initial preview. The native watcher compiles cleanly on
-Fedora 44 with Qt 6.11 and KF6 KIdleTime 6.29, and the renderer has passed GTK,
-VTE, and TerminalTextEffects smoke tests. Final acceptance testing on a real
-Plasma 6 Wayland session—especially mixed-DPI multi-monitor setups—is still on
-the roadmap.
+Version `0.1.0` is an initial preview. The native watcher is continuously built
+on Fedora and Debian with Qt 6 and KF6 KIdleTime, and the renderer has passed
+GTK, VTE, and TerminalTextEffects smoke tests. Final acceptance testing on a
+real Plasma 6 Wayland session—especially mixed-DPI multi-monitor setups—is
+still on the roadmap.
 
-## Quick start on Fedora KDE
+## Quick start on Linux
 
-Install the system dependencies:
+Ask the project for the correct dependency command for the current distro:
 
 ```sh
-sudo dnf install gcc-c++ cmake qt6-qtbase-devel kf6-kidletime-devel \
-  python3-gobject gtk4 vte291-gtk4 gtk4-layer-shell
+./scripts/dependency-hint.sh
 ```
 
-Clone and install:
+Install those packages, then clone and install:
 
 ```sh
 git clone https://github.com/RobbyBobby77/kde-ascii-saver.git
@@ -63,12 +62,13 @@ cd kde-ascii-saver
 
 Because the repository is currently private, cloning requires a GitHub account
 with access. The installer builds the small native watcher, creates an isolated
-Python environment, registers the application, and enables its Plasma user
-service. Existing artwork and configuration survive upgrades.
+Python environment, registers the application, and enables either a Plasma
+systemd user service or a portable XDG session-autostart entry. Existing
+artwork and configuration survive upgrades.
 
-The service waits for the next real input event before arming its first timeout.
-This prevents installation or a service restart from suddenly covering an
-already-idle desktop.
+The watcher waits for the next real input event before arming its first timeout.
+This prevents installation or a watcher restart from suddenly covering an
+already-idle desktop. A runtime lock also prevents duplicate watcher processes.
 
 ## Usage
 
@@ -131,6 +131,10 @@ cd kde-ascii-saver
 ./install.sh
 ```
 
+Run `./scripts/dependency-hint.sh` first on a new machine. It recognizes
+Fedora/RHEL, Debian/Ubuntu, Arch-family, and openSUSE systems. For other package
+managers, see the [distribution guide](docs/DISTRIBUTIONS.md).
+
 To migrate custom artwork and settings, also copy
 `~/.config/kde-ascii-saver/` to the same location on the destination computer.
 
@@ -142,14 +146,15 @@ idle-time query is unsupported on Plasma Wayland. The watcher listens for both
 `AboutToLock` and `ActiveChanged`, removing all visual surfaces before the
 secure lock screen takes over.
 
-See [Architecture](docs/ARCHITECTURE.md) and [Security](SECURITY.md) for the
-full design and trust boundary.
+See [Architecture](docs/ARCHITECTURE.md),
+[Distributions](docs/DISTRIBUTIONS.md), and [Security](SECURITY.md) for the
+full design, package mappings, and trust boundary.
 
 ## Development
 
 See [Contributing](CONTRIBUTING.md) for build commands and the Plasma test
 matrix. CI compiles the KF6 watcher and validates the Python, shell, JSON,
-desktop-entry, and GObject-introspection surfaces on Fedora.
+desktop-entry, and GObject-introspection surfaces on Fedora and Debian.
 
 ## Uninstall
 

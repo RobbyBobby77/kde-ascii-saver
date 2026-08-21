@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=KDE ASCII Saver idle watcher
+Comment=Start the KDE ASCII Saver idle integration
+Exec=@WATCHER@
+Icon=preferences-desktop-screensaver
+Terminal=false
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-after=panel

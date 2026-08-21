@@ -7,17 +7,35 @@ config_home=${XDG_CONFIG_HOME:-"$HOME/.config"}
 app_dir="$data_home/kde-ascii-saver"
 bin_dir="$HOME/.local/bin"
 systemd_dir="$config_home/systemd/user"
+autostart_dir="$config_home/autostart"
+watcher_pid_file=${XDG_RUNTIME_DIR:-/tmp}/kde-ascii-saver-watcher-$(id -u).pid
+has_user_systemd=false
 
-for command in python3 cmake systemctl; do
+show_dependency_help() {
+    "$source_dir/scripts/dependency-hint.sh" >&2
+}
+
+stop_existing_watcher() {
+    if [[ -r "$watcher_pid_file" ]]; then
+        read -r watcher_pid <"$watcher_pid_file" || watcher_pid=
+        if [[ "$watcher_pid" =~ ^[0-9]+$ ]] && \
+            [[ -r "/proc/$watcher_pid/cmdline" ]] && \
+            grep -aq 'kde-ascii-saver-watcher' "/proc/$watcher_pid/cmdline"; then
+            kill "$watcher_pid" 2>/dev/null || true
+        fi
+        rm -f -- "$watcher_pid_file"
+    fi
+}
+
+for command in python3 cmake; do
     if ! command -v "$command" >/dev/null; then
         printf 'Missing required command: %s\n' "$command" >&2
-        printf 'On Fedora, install dependencies with:\n' >&2
-        printf '  sudo dnf install gcc-c++ cmake qt6-qtbase-devel kf6-kidletime-devel python3-gobject gtk4 vte291-gtk4 gtk4-layer-shell\n' >&2
+        show_dependency_help
         exit 1
     fi
 done
 
-python3 - <<'PY'
+if ! python3 - <<'PY'
 import gi
 for namespace, version in (("Gtk", "4.0"), ("Vte", "3.91")):
     gi.require_version(namespace, version)
@@ -26,19 +44,51 @@ try:
 except ValueError:
     print("Warning: gtk4-layer-shell is unavailable; regular fullscreen windows will be used.")
 PY
+then
+    printf 'Missing required Python GTK 4 or VTE 3.91 bindings.\n' >&2
+    show_dependency_help
+    exit 1
+fi
+
+if command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
+    has_user_systemd=true
+fi
 
 mkdir -p "$app_dir" "$bin_dir" "$config_home/kde-ascii-saver" \
-    "$data_home/applications" "$systemd_dir"
+    "$data_home/applications"
+if "$has_user_systemd"; then
+    mkdir -p "$systemd_dir"
+else
+    mkdir -p "$autostart_dir"
+fi
 
-cmake -S "$source_dir" -B "$app_dir/build" -DCMAKE_BUILD_TYPE=Release
-cmake --build "$app_dir/build" --parallel
+if ! cmake -S "$source_dir" -B "$app_dir/build" -DCMAKE_BUILD_TYPE=Release; then
+    printf 'Unable to configure the Qt 6/KF6 watcher build.\n' >&2
+    show_dependency_help
+    exit 1
+fi
+if ! cmake --build "$app_dir/build" --parallel; then
+    printf 'Unable to build the Qt 6/KF6 watcher.\n' >&2
+    exit 1
+fi
 
 if [[ ! -x "$app_dir/venv/bin/python" ]]; then
-    python3 -m venv --system-site-packages "$app_dir/venv"
+    if ! python3 -m venv --system-site-packages "$app_dir/venv"; then
+        printf 'Unable to create a Python virtual environment.\n' >&2
+        show_dependency_help
+        exit 1
+    fi
 fi
-"$app_dir/venv/bin/python" -m pip install --quiet --disable-pip-version-check -r "$source_dir/requirements.txt"
+if ! "$app_dir/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+    -r "$source_dir/requirements.txt"; then
+    printf 'Unable to install TerminalTextEffects. Check network access and Python packaging support.\n' >&2
+    exit 1
+fi
 
-systemctl --user stop kde-ascii-saver.service 2>/dev/null || true
+if "$has_user_systemd"; then
+    systemctl --user stop kde-ascii-saver.service 2>/dev/null || true
+fi
+stop_existing_watcher
 install -m 0755 "$app_dir/build/kde-ascii-saver-watcher" "$app_dir/kde-ascii-saver-watcher"
 install -m 0755 "$source_dir/app.py" "$app_dir/app.py"
 install -m 0755 "$source_dir/ctl.py" "$app_dir/ctl.py"
@@ -56,11 +106,24 @@ sed "s|@EXEC@|$escaped_exec|" "$source_dir/io.github.kde_ascii_saver.KdeAsciiSav
     >"$data_home/applications/io.github.kde_ascii_saver.KdeAsciiSaver.desktop"
 update-desktop-database "$data_home/applications" 2>/dev/null || true
 
-install -m 0644 "$source_dir/kde-ascii-saver.service" "$systemd_dir/kde-ascii-saver.service"
-systemctl --user daemon-reload
-systemctl --user enable --now kde-ascii-saver.service
+if "$has_user_systemd"; then
+    install -m 0644 "$source_dir/kde-ascii-saver.service" "$systemd_dir/kde-ascii-saver.service"
+    rm -f -- "$autostart_dir/kde-ascii-saver-watcher.desktop"
+    systemctl --user daemon-reload
+    systemctl --user enable --now kde-ascii-saver.service
+    integration='systemd user service'
+else
+    rm -f -- "$systemd_dir/kde-ascii-saver.service"
+    escaped_watcher=$(printf '%s' "$bin_dir/kde-ascii-saver-watcher" | sed 's/[&|]/\\&/g')
+    sed "s|@WATCHER@|$escaped_watcher|" \
+        "$source_dir/io.github.kde_ascii_saver.Watcher.desktop.in" \
+        >"$autostart_dir/kde-ascii-saver-watcher.desktop"
+    nohup "$bin_dir/kde-ascii-saver-watcher" >/dev/null 2>&1 &
+    integration='XDG session autostart'
+fi
 
 printf '\nKDE ASCII Saver installed.\n'
+printf 'Idle integration: %s\n' "$integration"
 printf 'The idle watcher will arm after your next keyboard or pointer input.\n'
 printf 'Start now:  %s/kde-ascii-saverctl start\n' "$bin_dir"
 printf 'Edit art:   %s/kde-ascii-saverctl edit\n' "$bin_dir"

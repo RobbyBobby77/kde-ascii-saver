@@ -9,31 +9,52 @@ permissions:
 
 jobs:
   validate:
+    name: Validate on ${{ matrix.name }}
     runs-on: ubuntu-latest
-    container: fedora:44
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Fedora 44
+            image: fedora:44
+            install: |
+              dnf install -y \
+                bash cmake desktop-file-utils gcc-c++ git \
+                gtk4 gtk4-layer-shell kf6-kidletime-devel \
+                python3 python3-gobject qt6-qtbase-devel vte291-gtk4
+          - name: Debian 13
+            image: debian:trixie
+            install: |
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                bash build-essential cmake desktop-file-utils git \
+                gir1.2-gtk-4.0 gir1.2-gtk4layershell-1.0 gir1.2-vte-3.91 \
+                libkf6idletime-dev python3 python3-gi qt6-base-dev
+    container: ${{ matrix.image }}
 
     steps:
+      - name: Install build and validation dependencies
+        run: ${{ matrix.install }}
+
       - name: Check out repository
         uses: actions/checkout@v5
-
-      - name: Install build and validation dependencies
-        run: >-
-          dnf install -y
-          bash cmake gcc-c++ qt6-qtbase-devel kf6-kidletime-devel
-          python3 python3-gobject gtk4 vte291-gtk4 gtk4-layer-shell
-          desktop-file-utils
 
       - name: Validate Python, shell, JSON, and desktop metadata
         shell: bash
         run: |
           python3 -m py_compile app.py ctl.py
           bash -n install.sh uninstall.sh bin/kde-ascii-saver \
-            bin/kde-ascii-saverctl bin/kde-ascii-saver-watcher
+            bin/kde-ascii-saverctl bin/kde-ascii-saver-watcher \
+            scripts/dependency-hint.sh
           python3 -m json.tool config/config.json >/dev/null
           sed 's|@EXEC@|/home/test/.local/bin/kde-ascii-saver|' \
             io.github.kde_ascii_saver.KdeAsciiSaver.desktop.in \
             >/tmp/kde-ascii-saver.desktop
           desktop-file-validate /tmp/kde-ascii-saver.desktop
+          sed 's|@WATCHER@|/home/test/.local/bin/kde-ascii-saver-watcher|' \
+            io.github.kde_ascii_saver.Watcher.desktop.in \
+            >/tmp/kde-ascii-saver-watcher.desktop
+          desktop-file-validate /tmp/kde-ascii-saver-watcher.desktop
 
       - name: Validate GObject introspection dependencies
         run: |
