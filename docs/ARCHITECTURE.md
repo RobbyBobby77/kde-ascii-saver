@@ -21,6 +21,10 @@ entirely under KScreenLocker control.
 The watcher is a `QGuiApplication`, not a `QCoreApplication`, because the
 KIdleTime Wayland backend needs access to the active Wayland seat.
 
+A `QLockFile` in the XDG runtime directory enforces a single watcher process.
+The watcher also records a validated PID so the controller and non-systemd
+uninstaller can stop an XDG-autostarted process cleanly.
+
 On Wayland, KIdleTime uses `ext-idle-notify-v1` with the legacy KWin idle
 protocol as a fallback. It cannot poll current idle duration, so the watcher
 waits for one genuine resume event after startup before registering its first
@@ -50,9 +54,11 @@ partial JSON document.
 
 ### Session integration
 
-`kde-ascii-saver.service` is tied to `plasma-workspace.target` and ordered after
-`plasma-core.target`. It is enabled as a user service and stops with the Plasma
-workspace.
+When a systemd user manager is available, `kde-ascii-saver.service` is tied to
+`plasma-workspace.target` and ordered after `plasma-core.target`. It stops with
+the Plasma workspace. On non-systemd distributions, the installer creates an
+`OnlyShowIn=KDE` XDG autostart entry instead and starts the same watcher binary.
+The single-instance lock makes upgrades and repeated session startup safe.
 
 ## Data flow
 
@@ -77,8 +83,12 @@ KScreenLocker AboutToLock/ActiveChanged ────────────┘
 ~/.local/share/applications/io.github.kde_ascii_saver.KdeAsciiSaver.desktop
 ~/.config/kde-ascii-saver/config.json
 ~/.config/kde-ascii-saver/logo.txt
-~/.config/systemd/user/kde-ascii-saver.service
+~/.config/systemd/user/kde-ascii-saver.service        # systemd path
+~/.config/autostart/kde-ascii-saver-watcher.desktop  # non-systemd path
 ```
 
 The project honors `XDG_CONFIG_HOME` and `XDG_DATA_HOME` for configuration and
 application data. Launch wrappers remain under `~/.local/bin`.
+
+See [Distribution support](DISTRIBUTIONS.md) for package names and validation
+levels across Linux families.

@@ -6,14 +6,28 @@
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QDBusConnection>
+#include <QDir>
 #include <QFile>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QtGlobal>
+
+#include <unistd.h>
+
+static QString watcherRuntimeFile(const QString &suffix)
+{
+    auto directory = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (directory.isEmpty()) {
+        directory = QDir::tempPath();
+    }
+    return directory + QStringLiteral("/kde-ascii-saver-watcher-")
+        + QString::number(getuid()) + suffix;
+}
 
 class IdleWatcher final : public QObject
 {
@@ -214,6 +228,21 @@ int main(int argc, char *argv[])
     QGuiApplication application(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("kde-ascii-saver-watcher"));
     QCoreApplication::setOrganizationName(QStringLiteral("local"));
+
+    QLockFile instanceLock(watcherRuntimeFile(QStringLiteral(".lock")));
+    instanceLock.setStaleLockTime(0);
+    if (!instanceLock.tryLock(0)) {
+        return 0;
+    }
+
+    QFile pidFile(watcherRuntimeFile(QStringLiteral(".pid")));
+    if (pidFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        pidFile.write(QByteArray::number(QCoreApplication::applicationPid()));
+        pidFile.close();
+    }
+
     IdleWatcher watcher;
-    return application.exec();
+    const int result = application.exec();
+    pidFile.remove();
+    return result;
 }

@@ -22,6 +22,20 @@ data_dir = data_home / "kde-ascii-saver"
 pid_file = runtime_dir / f"kde-ascii-saver-{os.getuid()}.pid"
 launcher = home / ".local" / "bin" / "kde-ascii-saver"
 service = "kde-ascii-saver.service"
+watcher_pid_file = runtime_dir / f"kde-ascii-saver-watcher-{os.getuid()}.pid"
+autostart_file = config_home / "autostart" / "kde-ascii-saver-watcher.desktop"
+
+
+def systemd_user_available() -> bool:
+    executable = shutil.which("systemctl")
+    if executable is None:
+        return False
+    return subprocess.run(
+        [executable, "--user", "show-environment"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
 
 
 def load_config() -> dict:
@@ -52,6 +66,25 @@ def current_pid() -> int | None:
         return pid if b"kde-ascii-saver" in cmdline or b"app.py" in cmdline else None
     except (OSError, ValueError):
         return None
+
+
+def current_watcher_pid() -> int | None:
+    try:
+        pid = int(watcher_pid_file.read_text(encoding="ascii"))
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+        return pid if b"kde-ascii-saver-watcher" in cmdline else None
+    except (OSError, ValueError):
+        return None
+
+
+def stop_watcher() -> None:
+    pid = current_watcher_pid()
+    if pid is not None:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    watcher_pid_file.unlink(missing_ok=True)
 
 
 def command_start(windowed: bool = False) -> None:
@@ -85,12 +118,20 @@ def command_edit() -> None:
 
 def command_status() -> None:
     config = load_config()
-    integration = subprocess.run(
-        ["systemctl", "--user", "is-active", service],
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
+    if systemd_user_available():
+        state = subprocess.run(
+            ["systemctl", "--user", "is-active", service],
+            text=True,
+            capture_output=True,
+            check=False,
+        ).stdout.strip()
+        integration = f"systemd user service ({state or 'unavailable'})"
+    elif current_watcher_pid() is not None:
+        integration = "XDG session autostart (active)"
+    elif autostart_file.exists():
+        integration = "XDG session autostart (starts next login)"
+    else:
+        integration = "unavailable"
     print(f"running: {'yes' if current_pid() else 'no'}")
     print(f"automatic: {'enabled' if config.get('enabled', True) else 'disabled'}")
     print(f"idle delay: {config.get('idle_delay', 120)} seconds")
@@ -99,16 +140,19 @@ def command_status() -> None:
 
 
 def command_uninstall() -> None:
-    subprocess.run(
-        ["systemctl", "--user", "disable", "--now", service],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    if systemd_user_available():
+        subprocess.run(
+            ["systemctl", "--user", "disable", "--now", service],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    stop_watcher()
     for path in (
         data_dir,
         data_home / "applications" / "io.github.kde_ascii_saver.KdeAsciiSaver.desktop",
         config_home / "systemd" / "user" / service,
+        autostart_file,
         home / ".local" / "bin" / "kde-ascii-saver",
         home / ".local" / "bin" / "kde-ascii-saverctl",
         home / ".local" / "bin" / "kde-ascii-saver-watcher",
@@ -117,8 +161,9 @@ def command_uninstall() -> None:
             shutil.rmtree(path)
         else:
             path.unlink(missing_ok=True)
-    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
-    print(f"Removed the application and service. Your art is preserved in {config_dir}")
+    if systemd_user_available():
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    print(f"Removed the application and idle integration. Your art is preserved in {config_dir}")
 
 
 def main() -> int:
