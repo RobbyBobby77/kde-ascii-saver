@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=KDE ASCII Saver
+Comment=Start the animated Plasma ASCII screensaver
+Exec=@EXEC@
+Icon=preferences-desktop-screensaver
+Terminal=false
+OnlyShowIn=KDE;
+Categories=Qt;KDE;Utility;
+Keywords=screensaver;ascii;terminal;animation;plasma;
+StartupNotify=false

@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "idle_delay": 120,
+  "font": "Monospace 18",
+  "background": "#000000",
+  "frame_rate": 60,
+  "exclude_effects": ["bouncyballs", "overflow"]
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=KDE ASCII Saver idle watcher
+PartOf=plasma-workspace.target
+After=plasma-core.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/kde-ascii-saver-watcher
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=plasma-workspace.target

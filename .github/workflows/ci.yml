@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    container: fedora:44
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install build and validation dependencies
+        run: >-
+          dnf install -y
+          bash cmake gcc-c++ qt6-qtbase-devel kf6-kidletime-devel
+          python3 python3-gobject gtk4 vte291-gtk4 gtk4-layer-shell
+          desktop-file-utils
+
+      - name: Validate Python, shell, JSON, and desktop metadata
+        shell: bash
+        run: |
+          python3 -m py_compile app.py ctl.py
+          bash -n install.sh uninstall.sh bin/kde-ascii-saver \
+            bin/kde-ascii-saverctl bin/kde-ascii-saver-watcher
+          python3 -m json.tool config/config.json >/dev/null
+          sed 's|@EXEC@|/home/test/.local/bin/kde-ascii-saver|' \
+            io.github.kde_ascii_saver.KdeAsciiSaver.desktop.in \
+            >/tmp/kde-ascii-saver.desktop
+          desktop-file-validate /tmp/kde-ascii-saver.desktop
+
+      - name: Validate GObject introspection dependencies
+        run: |
+          python3 - <<'PY'
+          import gi
+          for namespace, version in (
+              ("Gtk", "4.0"),
+              ("Vte", "3.91"),
+              ("Gtk4LayerShell", "1.0"),
+          ):
+              gi.require_version(namespace, version)
+          from gi.repository import Gtk4LayerShell, Vte
+          assert Gtk4LayerShell.Layer.OVERLAY is not None
+          assert Vte.PtyFlags.DEFAULT is not None
+          PY
+
+      - name: Build native Plasma watcher
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
