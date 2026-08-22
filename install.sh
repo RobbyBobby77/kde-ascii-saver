@@ -8,23 +8,31 @@ app_dir="$data_home/kde-ascii-saver"
 bin_dir="$HOME/.local/bin"
 systemd_dir="$config_home/systemd/user"
 autostart_dir="$config_home/autostart"
-watcher_pid_file=${XDG_RUNTIME_DIR:-/tmp}/kde-ascii-saver-watcher-$(id -u).pid
 has_user_systemd=false
 
 show_dependency_help() {
     "$source_dir/scripts/dependency-hint.sh" >&2
 }
 
-stop_existing_watcher() {
-    if [[ -r "$watcher_pid_file" ]]; then
-        read -r watcher_pid <"$watcher_pid_file" || watcher_pid=
+stop_watcher_pid_file() {
+    local pid_file=$1
+    if [[ -r "$pid_file" ]]; then
+        read -r watcher_pid <"$pid_file" || watcher_pid=
         if [[ "$watcher_pid" =~ ^[0-9]+$ ]] && \
             [[ -r "/proc/$watcher_pid/cmdline" ]] && \
             grep -aq 'kde-ascii-saver-watcher' "/proc/$watcher_pid/cmdline"; then
             kill "$watcher_pid" 2>/dev/null || true
         fi
-        rm -f -- "$watcher_pid_file"
+        rm -f -- "$pid_file"
     fi
+}
+
+stop_existing_watcher() {
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+        stop_watcher_pid_file "$XDG_RUNTIME_DIR/kde-ascii-saver-watcher-$(id -u).pid"
+    fi
+    # Older releases fell back to /tmp; reap a leftover PID file on upgrade.
+    stop_watcher_pid_file "/tmp/kde-ascii-saver-watcher-$(id -u).pid"
 }
 
 for command in python3 cmake; do
@@ -62,15 +70,29 @@ else
     mkdir -p "$autostart_dir"
 fi
 
-if ! cmake -S "$source_dir" -B "$app_dir/build" -DCMAKE_BUILD_TYPE=Release; then
+build_dir=$(mktemp -d "${TMPDIR:-/tmp}/kde-ascii-saver-build.XXXXXX")
+cleanup_build() {
+    rm -rf -- "$build_dir"
+}
+trap cleanup_build EXIT
+
+if ! cmake -S "$source_dir" -B "$build_dir" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$app_dir" \
+    -DCMAKE_INSTALL_BINDIR=.; then
     printf 'Unable to configure the Qt 6/KF6 watcher build.\n' >&2
     show_dependency_help
     exit 1
 fi
-if ! cmake --build "$app_dir/build" --parallel; then
+if ! cmake --build "$build_dir" --parallel; then
     printf 'Unable to build the Qt 6/KF6 watcher.\n' >&2
     exit 1
 fi
+if ! cmake --install "$build_dir"; then
+    printf 'Unable to install the Qt 6/KF6 watcher.\n' >&2
+    exit 1
+fi
+rm -rf -- "$app_dir/build"
 
 if [[ ! -x "$app_dir/venv/bin/python" ]]; then
     if ! python3 -m venv --system-site-packages "$app_dir/venv"; then
@@ -89,9 +111,9 @@ if "$has_user_systemd"; then
     systemctl --user stop kde-ascii-saver.service 2>/dev/null || true
 fi
 stop_existing_watcher
-install -m 0755 "$app_dir/build/kde-ascii-saver-watcher" "$app_dir/kde-ascii-saver-watcher"
 install -m 0755 "$source_dir/app.py" "$app_dir/app.py"
 install -m 0755 "$source_dir/ctl.py" "$app_dir/ctl.py"
+install -m 0644 "$source_dir/VERSION" "$app_dir/VERSION"
 install -m 0755 "$source_dir/bin/kde-ascii-saver" "$bin_dir/kde-ascii-saver"
 install -m 0755 "$source_dir/bin/kde-ascii-saverctl" "$bin_dir/kde-ascii-saverctl"
 install -m 0755 "$source_dir/bin/kde-ascii-saver-watcher" "$bin_dir/kde-ascii-saver-watcher"
@@ -128,3 +150,4 @@ printf 'The idle watcher will arm after your next keyboard or pointer input.\n'
 printf 'Start now:  %s/kde-ascii-saverctl start\n' "$bin_dir"
 printf 'Edit art:   %s/kde-ascii-saverctl edit\n' "$bin_dir"
 printf 'Set delay:  %s/kde-ascii-saverctl delay 180\n' "$bin_dir"
+printf 'If those commands are not found, add %s to PATH.\n' "$bin_dir"

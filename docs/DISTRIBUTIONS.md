@@ -18,8 +18,8 @@ matching command yourself, review the packages, and then run `./install.sh`.
 
 ```sh
 sudo dnf install gcc-c++ cmake qt6-qtbase-devel kf6-kidletime-devel \
-  python3 python3-gobject gtk4 vte291-gtk4 gtk4-layer-shell \
-  desktop-file-utils
+  python3 python3-pip python3-devel python3-gobject gtk4 vte291-gtk4 \
+  gtk4-layer-shell desktop-file-utils
 ```
 
 ### Debian 13 and compatible Ubuntu releases
@@ -71,6 +71,9 @@ Then run:
 kde-ascii-saverctl status
 kde-ascii-saverctl preview
 ```
+
+Launch wrappers live in `~/.local/bin`. Add that directory to `PATH` if the
+commands are not found.
 
 NixOS and other declarative/read-only systems should provide these dependencies
 through their native development environment or package definition before

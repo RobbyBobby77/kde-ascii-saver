@@ -30,6 +30,7 @@ click, or scroll event.
 - Random TTE animations with editable ASCII artwork
 - One fullscreen surface per monitor
 - KWin Layer Shell overlays on Plasma Wayland, including panel coverage
+  (probed after GTK connects a display)
 - Borderless fullscreen fallback for X11 or unavailable Layer Shell support
 - Native KDE Frameworks `KIdleTime` idle and resume detection
 - Immediate handoff when KScreenLocker begins locking
@@ -65,6 +66,13 @@ with access. The installer builds the small native watcher, creates an isolated
 Python environment, registers the application, and enables either a Plasma
 systemd user service or a portable XDG session-autostart entry. Existing
 artwork and configuration survive upgrades.
+
+Launch wrappers are installed to `~/.local/bin`. Add that directory to `PATH`
+if `kde-ascii-saverctl` is not found after install:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
 
 The watcher waits for the next real input event before arming its first timeout.
 This prevents installation or a watcher restart from suddenly covering an
@@ -140,11 +148,12 @@ To migrate custom artwork and settings, also copy
 
 ## Architecture and security
 
-The renderer uses GTK 4, VTE, and GTK4 Layer Shell. A small Qt 6 helper uses
-KDE Frameworks `KIdleTime`, which is required because KScreenLocker's D-Bus
-idle-time query is unsupported on Plasma Wayland. The watcher listens for both
-`AboutToLock` and `ActiveChanged`, removing all visual surfaces before the
-secure lock screen takes over.
+The renderer uses GTK 4, VTE, and GTK4 Layer Shell. Layer Shell is probed only
+after GTK has a display, so the overlay path can actually succeed on Plasma
+Wayland. A small Qt 6 helper uses KDE Frameworks `KIdleTime`, which is required
+because KScreenLocker's D-Bus idle-time query is unsupported on Plasma Wayland.
+The watcher listens for both `AboutToLock` and `ActiveChanged`, removing all
+visual surfaces before the secure lock screen takes over.
 
 See [Architecture](docs/ARCHITECTURE.md),
 [Distributions](docs/DISTRIBUTIONS.md), and [Security](SECURITY.md) for the
@@ -153,8 +162,9 @@ full design, package mappings, and trust boundary.
 ## Development
 
 See [Contributing](CONTRIBUTING.md) for build commands and the Plasma test
-matrix. CI compiles the KF6 watcher and validates the Python, shell, JSON,
-desktop-entry, and GObject-introspection surfaces on Fedora and Debian.
+matrix. CI compiles the KF6 watcher, runs the Python unit tests, and validates
+the Python, shell, JSON, desktop-entry, and GObject-introspection surfaces on
+Fedora and Debian.
 
 ## Uninstall
 

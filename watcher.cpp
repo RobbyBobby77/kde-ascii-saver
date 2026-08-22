@@ -3,27 +3,47 @@
 
 #include <KIdleTime>
 
-#include <QDBusInterface>
-#include <QDBusReply>
 #include <QDBusConnection>
-#include <QDir>
+#include <QDBusMessage>
 #include <QFile>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLockFile>
 #include <QProcess>
+#include <QSocketNotifier>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QtGlobal>
 
+#include <csignal>
+#include <sys/socket.h>
 #include <unistd.h>
+
+namespace {
+
+int shutdownSockets[2] = {-1, -1};
+
+void unixSignalHandler(int)
+{
+    char byte = 1;
+    if (shutdownSockets[0] != -1) {
+        ::write(shutdownSockets[0], &byte, sizeof(byte));
+    }
+}
+
+} // namespace
+
+static QString watcherRuntimeDir()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+}
 
 static QString watcherRuntimeFile(const QString &suffix)
 {
-    auto directory = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    const auto directory = watcherRuntimeDir();
     if (directory.isEmpty()) {
-        directory = QDir::tempPath();
+        return {};
     }
     return directory + QStringLiteral("/kde-ascii-saver-watcher-")
         + QString::number(getuid()) + suffix;
@@ -52,6 +72,23 @@ public:
                 qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
                 this,
                 [this](int, QProcess::ExitStatus) { m_startedByWatcher = false; });
+        connect(&m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+            if (error == QProcess::FailedToStart) {
+                m_startedByWatcher = false;
+                qWarning("kde-ascii-saver-watcher: failed to start renderer");
+            }
+        });
+
+        m_killTimer.setSingleShot(true);
+        m_killTimer.setInterval(2000);
+        connect(&m_killTimer, &QTimer::timeout, this, [this] {
+            if (m_killGeneration != m_startGeneration) {
+                return;
+            }
+            if (m_process.state() != QProcess::NotRunning) {
+                m_process.kill();
+            }
+        });
 
         auto *timer = new QTimer(this);
         timer->setInterval(1000);
@@ -85,8 +122,22 @@ public:
     ~IdleWatcher() override
     {
         stopSaver();
+        if (m_process.state() != QProcess::NotRunning) {
+            m_process.waitForFinished(1500);
+        }
         KIdleTime::instance()->removeAllIdleTimeouts();
         KIdleTime::instance()->stopCatchingResumeEvent();
+    }
+
+    void stopSaver()
+    {
+        if (!m_startedByWatcher || m_process.state() == QProcess::NotRunning) {
+            return;
+        }
+        m_startedByWatcher = false;
+        m_killGeneration = m_startGeneration;
+        m_process.terminate();
+        m_killTimer.start();
     }
 
 private:
@@ -149,15 +200,15 @@ private:
 
     bool screenLocked() const
     {
-        QDBusInterface screenSaver(QStringLiteral("org.freedesktop.ScreenSaver"),
-                                   QStringLiteral("/ScreenSaver"),
-                                   QStringLiteral("org.freedesktop.ScreenSaver"),
-                                   QDBusConnection::sessionBus());
-        if (!screenSaver.isValid()) {
+        auto message = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.ScreenSaver"),
+                                                     QStringLiteral("/ScreenSaver"),
+                                                     QStringLiteral("org.freedesktop.ScreenSaver"),
+                                                     QStringLiteral("GetActive"));
+        const QDBusMessage reply = QDBusConnection::sessionBus().call(message, QDBus::Block, 1000);
+        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty()) {
             return m_locked;
         }
-        const QDBusReply<bool> reply = screenSaver.call(QStringLiteral("GetActive"));
-        return reply.isValid() ? reply.value() : m_locked;
+        return reply.arguments().constFirst().toBool();
     }
 
     void startSaver()
@@ -165,25 +216,13 @@ private:
         if (m_process.state() != QProcess::NotRunning) {
             return;
         }
+        m_killTimer.stop();
+        ++m_startGeneration;
         m_process.setProgram(m_dataDir + QStringLiteral("/venv/bin/python"));
         m_process.setArguments({m_dataDir + QStringLiteral("/app.py")});
         m_process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+        m_startedByWatcher = true;
         m_process.start();
-        m_startedByWatcher = m_process.waitForStarted(3000);
-    }
-
-    void stopSaver()
-    {
-        if (!m_startedByWatcher || m_process.state() == QProcess::NotRunning) {
-            return;
-        }
-        m_startedByWatcher = false;
-        m_process.terminate();
-        QTimer::singleShot(2000, &m_process, [this] {
-            if (m_process.state() != QProcess::NotRunning) {
-                m_process.kill();
-            }
-        });
     }
 
     void pollState()
@@ -213,6 +252,9 @@ private:
     QString m_configPath;
     QString m_dataDir;
     QProcess m_process;
+    QTimer m_killTimer;
+    quint64 m_startGeneration = 0;
+    quint64 m_killGeneration = 0;
     int m_timeoutId = 0;
     int m_delaySeconds = 120;
     bool m_enabled = true;
@@ -229,10 +271,31 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(QStringLiteral("kde-ascii-saver-watcher"));
     QCoreApplication::setOrganizationName(QStringLiteral("local"));
 
+    if (watcherRuntimeDir().isEmpty()) {
+        qWarning("kde-ascii-saver-watcher: XDG_RUNTIME_DIR is unset; refusing to start");
+        return 1;
+    }
+
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, shutdownSockets) != 0) {
+        qWarning("kde-ascii-saver-watcher: unable to create shutdown socket");
+        return 1;
+    }
+
+    struct sigaction action {};
+    action.sa_handler = unixSignalHandler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = SA_RESTART;
+    sigaction(SIGTERM, &action, nullptr);
+    sigaction(SIGINT, &action, nullptr);
+
     QLockFile instanceLock(watcherRuntimeFile(QStringLiteral(".lock")));
-    instanceLock.setStaleLockTime(0);
+    instanceLock.setStaleLockTime(30000);
     if (!instanceLock.tryLock(0)) {
-        return 0;
+        instanceLock.removeStaleLockFile();
+        if (!instanceLock.tryLock(0)) {
+            qWarning("kde-ascii-saver-watcher: another instance is already running");
+            return 1;
+        }
     }
 
     QFile pidFile(watcherRuntimeFile(QStringLiteral(".pid")));
@@ -242,6 +305,17 @@ int main(int argc, char *argv[])
     }
 
     IdleWatcher watcher;
+    QSocketNotifier notifier(shutdownSockets[1], QSocketNotifier::Read, &application);
+    QObject::connect(&notifier,
+                     &QSocketNotifier::activated,
+                     &application,
+                     [&](QSocketDescriptor) {
+                         char byte = 0;
+                         ::read(shutdownSockets[1], &byte, sizeof(byte));
+                         watcher.stopSaver();
+                         application.quit();
+                     });
+
     const int result = application.exec();
     pidFile.remove();
     return result;

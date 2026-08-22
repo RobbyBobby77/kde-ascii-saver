@@ -15,15 +15,47 @@ from pathlib import Path
 home = Path.home()
 config_home = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
 data_home = Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share"))
-runtime_dir = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
 config_dir = config_home / "kde-ascii-saver"
 config_file = config_dir / "config.json"
 data_dir = data_home / "kde-ascii-saver"
-pid_file = runtime_dir / f"kde-ascii-saver-{os.getuid()}.pid"
 launcher = home / ".local" / "bin" / "kde-ascii-saver"
 service = "kde-ascii-saver.service"
-watcher_pid_file = runtime_dir / f"kde-ascii-saver-watcher-{os.getuid()}.pid"
 autostart_file = config_home / "autostart" / "kde-ascii-saver-watcher.desktop"
+
+DEFAULT_CONFIG = {
+    "enabled": True,
+    "idle_delay": 120,
+    "font": "Monospace 18",
+    "background": "#000000",
+    "frame_rate": 60,
+    "exclude_effects": ["bouncyballs", "overflow"],
+}
+
+
+def load_version() -> str:
+    try:
+        text = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "0.1.0"
+    return text or "0.1.0"
+
+
+VERSION = load_version()
+
+
+def runtime_dir() -> Path | None:
+    value = os.environ.get("XDG_RUNTIME_DIR")
+    return Path(value) if value else None
+
+
+def pid_file() -> Path | None:
+    directory = runtime_dir()
+    return None if directory is None else directory / f"kde-ascii-saver-{os.getuid()}.pid"
+
+
+def watcher_pid_file() -> Path | None:
+    directory = runtime_dir()
+    return None if directory is None else directory / f"kde-ascii-saver-watcher-{os.getuid()}.pid"
 
 
 def systemd_user_available() -> bool:
@@ -39,11 +71,16 @@ def systemd_user_available() -> bool:
 
 
 def load_config() -> dict:
+    config = dict(DEFAULT_CONFIG)
     try:
         value = json.loads(config_file.read_text(encoding="utf-8"))
-        return value if isinstance(value, dict) else {}
+    except FileNotFoundError:
+        return config
     except (OSError, ValueError):
-        return {}
+        return config
+    if isinstance(value, dict):
+        config.update(value)
+    return config
 
 
 def save_config(config: dict) -> None:
@@ -54,14 +91,32 @@ def save_config(config: dict) -> None:
 
 
 def update_config(key: str, value) -> None:
-    config = load_config()
+    """Merge one key into config.json. Refuse to clobber an unreadable file."""
+    if config_file.exists():
+        try:
+            loaded = json.loads(config_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SystemExit(
+                f"kde-ascii-saverctl: config.json is unreadable ({exc}); refusing to overwrite it"
+            ) from exc
+        if not isinstance(loaded, dict):
+            raise SystemExit(
+                "kde-ascii-saverctl: config.json is not a JSON object; refusing to overwrite it"
+            )
+    else:
+        loaded = {}
+    config = dict(DEFAULT_CONFIG)
+    config.update(loaded)
     config[key] = value
     save_config(config)
 
 
 def current_pid() -> int | None:
+    path = pid_file()
+    if path is None:
+        return None
     try:
-        pid = int(pid_file.read_text(encoding="ascii"))
+        pid = int(path.read_text(encoding="ascii"))
         cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
         return pid if b"kde-ascii-saver" in cmdline or b"app.py" in cmdline else None
     except (OSError, ValueError):
@@ -69,8 +124,11 @@ def current_pid() -> int | None:
 
 
 def current_watcher_pid() -> int | None:
+    path = watcher_pid_file()
+    if path is None:
+        return None
     try:
-        pid = int(watcher_pid_file.read_text(encoding="ascii"))
+        pid = int(path.read_text(encoding="ascii"))
         cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
         return pid if b"kde-ascii-saver-watcher" in cmdline else None
     except (OSError, ValueError):
@@ -84,7 +142,9 @@ def stop_watcher() -> None:
             os.kill(pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
-    watcher_pid_file.unlink(missing_ok=True)
+    path = watcher_pid_file()
+    if path is not None:
+        path.unlink(missing_ok=True)
 
 
 def command_start(windowed: bool = False) -> None:
@@ -99,8 +159,10 @@ def command_start(windowed: bool = False) -> None:
 
 def command_stop() -> None:
     pid = current_pid()
+    path = pid_file()
     if not pid:
-        pid_file.unlink(missing_ok=True)
+        if path is not None:
+            path.unlink(missing_ok=True)
         print("KDE ASCII Saver is not running")
         return
     os.kill(pid, signal.SIGTERM)
@@ -168,6 +230,7 @@ def command_uninstall() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Control KDE ASCII Saver")
+    parser.add_argument("--version", action="version", version=f"KDE ASCII Saver {VERSION}")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("start")
     sub.add_parser("preview")

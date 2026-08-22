@@ -26,6 +26,7 @@ kde-ascii-saverctl preview
 
 ```sh
 python3 -m py_compile app.py ctl.py
+python3 -m unittest discover -s tests -t . -v
 bash -n install.sh uninstall.sh bin/kde-ascii-saver \
   bin/kde-ascii-saverctl bin/kde-ascii-saver-watcher \
   scripts/dependency-hint.sh

@@ -29,18 +29,58 @@ from gi.repository import Gdk, Gio, GLib, Gtk, Pango, Vte  # noqa: E402
 
 
 APP_ID = "io.github.kde_ascii_saver.KdeAsciiSaver"
-VERSION = "0.1.0"
 DEFAULT_CONFIG = {
     "font": "Monospace 18",
     "background": "#000000",
     "frame_rate": 60,
     "exclude_effects": ["bouncyballs", "overflow"],
 }
+# Completed effects restart immediately. Crashes back off, then give up.
+TTE_RESTART_MS = 80
+TTE_MAX_FAILURES = 8
+TTE_BACKOFF_CAP_MS = 5000
+
+
+def load_version() -> str:
+    try:
+        text = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "0.1.0"
+    return text or "0.1.0"
+
+
+VERSION = load_version()
+
+
+def tte_restart_after(status: int, failures: int) -> tuple[int, int] | None:
+    """Return (delay_ms, updated_failures) or None to stop the saver.
+
+    A zero wait/exit status is a completed effect. Anything else is a crash or
+    missing resource: exponential backoff from TTE_RESTART_MS, capped, then
+    give up after TTE_MAX_FAILURES consecutive failures.
+    """
+    if status == 0:
+        return TTE_RESTART_MS, 0
+    failures += 1
+    if failures >= TTE_MAX_FAILURES:
+        return None
+    delay = min(TTE_BACKOFF_CAP_MS, TTE_RESTART_MS * (2 ** (failures - 1)))
+    return delay, failures
 
 
 def xdg_path(env_name: str, fallback: Path) -> Path:
     value = os.environ.get(env_name)
     return Path(value).expanduser() if value else fallback
+
+
+def runtime_dir() -> Path | None:
+    value = os.environ.get("XDG_RUNTIME_DIR")
+    return Path(value) if value else None
+
+
+def pid_file() -> Path | None:
+    directory = runtime_dir()
+    return None if directory is None else directory / f"kde-ascii-saver-{os.getuid()}.pid"
 
 
 CONFIG_DIR = Path(
@@ -55,8 +95,6 @@ DATA_DIR = Path(
         xdg_path("XDG_DATA_HOME", Path.home() / ".local" / "share") / "kde-ascii-saver",
     )
 )
-RUNTIME_DIR = xdg_path("XDG_RUNTIME_DIR", Path("/tmp"))
-PID_FILE = RUNTIME_DIR / f"kde-ascii-saver-{os.getuid()}.pid"
 
 
 def load_config() -> dict:
@@ -91,6 +129,7 @@ class SaverWindow(Gtk.ApplicationWindow):
         self.windowed = windowed
         self.armed = False
         self.running = False
+        self.tte_failures = 0
         self.cancellable = Gio.Cancellable()
         self.set_decorated(windowed)
         self.set_resizable(True)
@@ -228,12 +267,24 @@ class SaverWindow(Gtk.ApplicationWindow):
             self.running = False
             self.app.quit_saver()
 
-    def _on_child_exited(self, _terminal, _status) -> None:
+    def _on_child_exited(self, _terminal, status) -> None:
         self.running = False
         if self.app.once:
             self.app.quit_saver()
-        elif not self.app.stopping:
-            GLib.timeout_add(80, self._start)
+            return
+        if self.app.stopping:
+            return
+        decision = tte_restart_after(status, self.tte_failures)
+        if decision is None:
+            print(
+                "kde-ascii-saver: animation exited repeatedly "
+                f"(status {status}); giving up",
+                file=sys.stderr,
+            )
+            self.app.quit_saver()
+            return
+        delay, self.tte_failures = decision
+        GLib.timeout_add(delay, self._start)
 
 
 class SaverApplication(Gtk.Application):
@@ -243,10 +294,15 @@ class SaverApplication(Gtk.Application):
         self.once = once
         self.config = load_config()
         self.stopping = False
-        self.layer_shell = bool(Gtk4LayerShell and Gtk4LayerShell.is_supported())
+        # Probed in do_startup after GTK connects a display; fullscreen fallback otherwise.
+        self.layer_shell = False
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
+        display = Gdk.Display.get_default()
+        self.layer_shell = bool(
+            display is not None and Gtk4LayerShell is not None and Gtk4LayerShell.is_supported()
+        )
         css = Gtk.CssProvider()
         css.load_from_data(b"window, vte-terminal { background: #000; padding: 0; margin: 0; }")
         Gtk.StyleContext.add_provider_for_display(
@@ -260,7 +316,12 @@ class SaverApplication(Gtk.Application):
                 window.present()
             return
 
-        PID_FILE.write_text(str(os.getpid()), encoding="ascii")
+        path = pid_file()
+        if path is not None:
+            try:
+                path.write_text(str(os.getpid()), encoding="ascii")
+            except OSError as exc:
+                print(f"kde-ascii-saver: could not write PID file: {exc}", file=sys.stderr)
         if self.windowed:
             SaverWindow(self, None, True)
             return
@@ -279,16 +340,19 @@ class SaverApplication(Gtk.Application):
             return
         self.stopping = True
         for window in list(self.get_windows()):
+            window.cancellable.cancel()
             window.terminal.feed_child(bytes((3,)))
             window.destroy()
         self.quit()
 
     def do_shutdown(self) -> None:
-        try:
-            if PID_FILE.read_text(encoding="ascii").strip() == str(os.getpid()):
-                PID_FILE.unlink(missing_ok=True)
-        except OSError:
-            pass
+        path = pid_file()
+        if path is not None:
+            try:
+                if path.read_text(encoding="ascii").strip() == str(os.getpid()):
+                    path.unlink(missing_ok=True)
+            except OSError:
+                pass
         Gtk.Application.do_shutdown(self)
 
 
@@ -298,6 +362,9 @@ def main() -> int:
     parser.add_argument("--windowed", action="store_true", help="open one decorated preview window")
     parser.add_argument("--once", action="store_true", help="exit after one animation")
     args = parser.parse_args()
+    if runtime_dir() is None:
+        print("kde-ascii-saver: XDG_RUNTIME_DIR is unset; refusing to start", file=sys.stderr)
+        return 1
     app = SaverApplication(windowed=args.windowed, once=args.once)
     for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(signum, lambda *_unused: GLib.idle_add(app.quit_saver))

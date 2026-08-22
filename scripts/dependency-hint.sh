@@ -14,7 +14,7 @@ case " $distro_id $distro_like " in
     *" fedora "*|*" rhel "*)
         cat <<'EOF'
 Install dependencies with:
-  sudo dnf install gcc-c++ cmake qt6-qtbase-devel kf6-kidletime-devel python3 python3-gobject gtk4 vte291-gtk4 gtk4-layer-shell desktop-file-utils
+  sudo dnf install gcc-c++ cmake qt6-qtbase-devel kf6-kidletime-devel python3 python3-pip python3-devel python3-gobject gtk4 vte291-gtk4 gtk4-layer-shell desktop-file-utils
 EOF
         ;;
     *" debian "*|*" ubuntu "*)
