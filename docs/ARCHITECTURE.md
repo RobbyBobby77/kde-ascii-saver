@@ -23,7 +23,9 @@ KIdleTime Wayland backend needs access to the active Wayland seat.
 
 A `QLockFile` in the XDG runtime directory enforces a single watcher process.
 The watcher also records a validated PID so the controller and non-systemd
-uninstaller can stop an XDG-autostarted process cleanly.
+uninstaller can stop an XDG-autostarted process cleanly. Both the watcher and
+the renderer refuse to start if `XDG_RUNTIME_DIR` is unset rather than writing
+lock or PID files into world-writable `/tmp`.
 
 On Wayland, KIdleTime uses `ext-idle-notify-v1` with the legacy KWin idle
 protocol as a fallback. It cannot poll current idle duration, so the watcher
@@ -35,22 +37,26 @@ already-idle desktop.
 
 `app.py` creates one GTK 4/VTE window for every GDK monitor and launches one TTE
 process per terminal. Completed effects restart automatically with a new random
-effect.
+effect. A crashing or missing TTE child backs off and then gives up instead of
+respawning every 80 ms.
 
 On supported Wayland compositors, GTK4 Layer Shell places each window on the
-overlay layer and anchors it to all four output edges. The primary surface asks
-for exclusive keyboard input so the first key can dismiss the animation; other
-surfaces do not compete for keyboard focus. KIdleTime resume events remain the
-authoritative dismissal mechanism.
+overlay layer and anchors it to all four output edges. The renderer probes
+`Gtk4LayerShell.is_supported()` only after `Gtk.Application` startup has
+connected a display. The primary surface asks for exclusive keyboard input so
+the first key can dismiss the animation; other surfaces do not compete for
+keyboard focus. KIdleTime resume events remain the authoritative dismissal
+mechanism.
 
-On X11, or when GTK4 Layer Shell is unavailable, the renderer requests a normal
-borderless fullscreen window on each monitor.
+On X11, or when GTK4 Layer Shell is unavailable after that probe, the renderer
+requests a normal borderless fullscreen window on each monitor.
 
 ### Control utility
 
 `ctl.py` manages manual launch, status, artwork editing, the delay, automatic
 activation, and removal. It writes configuration atomically to avoid leaving a
-partial JSON document.
+partial JSON document. An unreadable `config.json` is left untouched rather than
+replaced with a one-key file.
 
 ### Session integration
 
