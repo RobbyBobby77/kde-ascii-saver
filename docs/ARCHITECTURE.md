@@ -16,7 +16,9 @@ entirely under KScreenLocker control.
 - `org.kde.screensaver.AboutToLock` stops the renderer before lock begins.
 - `org.freedesktop.ScreenSaver.ActiveChanged(true)` provides a second lock-state
   guard.
-- `GetActive()` prevents launch while the session is already locked.
+- `GetActive()` prevents launch while the session is already locked. The call
+  uses a 1s timeout and is skipped once `AboutToLock` or `ActiveChanged` has
+  already reported that the locker is up.
 
 The watcher is a `QGuiApplication`, not a `QCoreApplication`, because the
 KIdleTime Wayland backend needs access to the active Wayland seat.
@@ -36,9 +38,12 @@ already-idle desktop.
 ### Renderer
 
 `app.py` creates one GTK 4/VTE window for every GDK monitor and launches one TTE
-process per terminal. Completed effects restart automatically with a new random
-effect. A crashing or missing TTE child backs off and then gives up instead of
-respawning every 80 ms.
+process per terminal. The Gdk monitor list is watched so plugging or unplugging
+a display while the saver is showing adds or removes overlay windows. Completed
+effects restart automatically with a new random effect. A crashing or missing
+TTE child backs off and then gives up instead of respawning every 80 ms.
+`config.json` values for `frame_rate`, colors, and `exclude_effects` are
+validated before they reach TTE argv.
 
 On supported Wayland compositors, GTK4 Layer Shell places each window on the
 overlay layer and anchors it to all four output edges. The renderer probes

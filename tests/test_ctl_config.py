@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
@@ -71,9 +72,49 @@ class UpdateConfigTests(unittest.TestCase):
 
     def test_load_config_does_not_write_on_parse_failure(self) -> None:
         self.config_file.write_text("{bad", encoding="utf-8")
-        loaded = ctl.load_config()
+        with mock.patch("sys.stderr", io.StringIO()):
+            loaded = ctl.load_config()
         self.assertEqual(loaded["font"], ctl.DEFAULT_CONFIG["font"])
         self.assertEqual(self.config_file.read_text(encoding="utf-8"), "{bad")
+
+    def test_load_config_rejects_invalid_visual_keys(self) -> None:
+        self.config_file.write_text(
+            '{"frame_rate": "60", "background": "--red", "exclude_effects": "--help"}',
+            encoding="utf-8",
+        )
+        with mock.patch("sys.stderr", io.StringIO()):
+            loaded = ctl.load_config()
+        self.assertEqual(loaded["frame_rate"], 60)
+        self.assertEqual(loaded["background"], "#000000")
+        self.assertEqual(loaded["exclude_effects"], ctl.DEFAULT_CONFIG["exclude_effects"])
+
+
+class EditorCommandTests(unittest.TestCase):
+    def test_edit_splits_editor_with_shlex(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp)
+            with mock.patch.object(ctl, "config_dir", config_dir), mock.patch.dict(
+                "os.environ",
+                {"VISUAL": '"/home/user/my editor" --wait', "EDITOR": "vim"},
+            ), mock.patch("ctl.subprocess.run") as run:
+                ctl.command_edit()
+        run.assert_called_once()
+        argv = run.call_args[0][0]
+        self.assertEqual(argv[0], "/home/user/my editor")
+        self.assertEqual(argv[1], "--wait")
+        self.assertEqual(argv[2], str(config_dir / "logo.txt"))
+
+    def test_edit_resolves_single_token_with_which(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp)
+            with mock.patch.object(ctl, "config_dir", config_dir), mock.patch.dict(
+                "os.environ", {"VISUAL": "vim", "EDITOR": ""}
+            ), mock.patch("ctl.editor_argv", return_value=["/usr/bin/vim"]) as editor, mock.patch(
+                "ctl.subprocess.run"
+            ) as run:
+                ctl.command_edit()
+        editor.assert_called_once_with("vim")
+        self.assertEqual(run.call_args[0][0][0], "/usr/bin/vim")
 
 
 if __name__ == "__main__":

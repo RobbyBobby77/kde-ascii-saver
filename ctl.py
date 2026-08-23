@@ -11,6 +11,8 @@ import signal
 import subprocess
 from pathlib import Path
 
+from helpers import DEFAULT_CONFIG, editor_argv, load_config as load_config_file, read_version
+
 
 home = Path.home()
 config_home = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
@@ -21,26 +23,7 @@ data_dir = data_home / "kde-ascii-saver"
 launcher = home / ".local" / "bin" / "kde-ascii-saver"
 service = "kde-ascii-saver.service"
 autostart_file = config_home / "autostart" / "kde-ascii-saver-watcher.desktop"
-
-DEFAULT_CONFIG = {
-    "enabled": True,
-    "idle_delay": 120,
-    "font": "Monospace 18",
-    "background": "#000000",
-    "frame_rate": 60,
-    "exclude_effects": ["bouncyballs", "overflow"],
-}
-
-
-def load_version() -> str:
-    try:
-        text = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
-    except OSError:
-        return "0.1.0"
-    return text or "0.1.0"
-
-
-VERSION = load_version()
+VERSION = read_version()
 
 
 def runtime_dir() -> Path | None:
@@ -71,16 +54,7 @@ def systemd_user_available() -> bool:
 
 
 def load_config() -> dict:
-    config = dict(DEFAULT_CONFIG)
-    try:
-        value = json.loads(config_file.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return config
-    except (OSError, ValueError):
-        return config
-    if isinstance(value, dict):
-        config.update(value)
-    return config
+    return load_config_file(config_file)
 
 
 def save_config(config: dict) -> None:
@@ -173,9 +147,11 @@ def command_edit() -> None:
     logo = config_dir / "logo.txt"
     editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
     if editor:
-        subprocess.run([*editor.split(), str(logo)], check=False)
-    else:
-        subprocess.Popen(["xdg-open", str(logo)], start_new_session=True)
+        argv = editor_argv(editor)
+        if argv:
+            subprocess.run([*argv, str(logo)], check=False)
+            return
+    subprocess.Popen(["xdg-open", str(logo)], start_new_session=True)
 
 
 def command_status() -> None:

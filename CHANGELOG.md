@@ -11,7 +11,8 @@ All notable changes to this project will be documented here.
 - Fedora and Debian native-watcher builds in CI.
 - XDG session autostart when no systemd user manager is available.
 - A single-instance watcher lock and PID-based lifecycle for autostart mode.
-- Unit tests for config merge and TTE restart backoff.
+- Unit tests for config merge, config validation, TTE restart backoff, and
+  `$EDITOR` argv parsing.
 
 ### Changed
 
@@ -27,6 +28,14 @@ All notable changes to this project will be documented here.
 - Build the native watcher in a temporary directory and `cmake --install` into
   the data dir.
 - Read the project version from the `VERSION` file.
+- Validate `frame_rate`, colors, `exclude_effects`, `enabled`, and `idle_delay`
+  when loading `config.json`.
+- Split `$EDITOR` / `$VISUAL` with `shlex` and resolve a single token with
+  `shutil.which`.
+- Follow Gdk monitor add/remove while the saver is showing.
+- Skip blocking `GetActive` once `AboutToLock` or `ActiveChanged` already
+  reported a lock.
+- Compile the watcher with `-Wall -Wextra` on GCC and Clang.
 
 ### Fixed
 

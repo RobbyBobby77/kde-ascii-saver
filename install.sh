@@ -113,6 +113,7 @@ fi
 stop_existing_watcher
 install -m 0755 "$source_dir/app.py" "$app_dir/app.py"
 install -m 0755 "$source_dir/ctl.py" "$app_dir/ctl.py"
+install -m 0644 "$source_dir/helpers.py" "$app_dir/helpers.py"
 install -m 0644 "$source_dir/VERSION" "$app_dir/VERSION"
 install -m 0755 "$source_dir/bin/kde-ascii-saver" "$bin_dir/kde-ascii-saver"
 install -m 0755 "$source_dir/bin/kde-ascii-saverctl" "$bin_dir/kde-ascii-saverctl"
