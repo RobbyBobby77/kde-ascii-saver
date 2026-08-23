@@ -4,7 +4,8 @@ on:
   workflow_call:
   push:
     branches:
-      - "**"
+      - main
+      - testing
   pull_request:
 
 permissions:
@@ -41,6 +42,9 @@ jobs:
 
       - name: Check out repository
         uses: actions/checkout@v5
+
+      - name: Trust the container workspace for release packaging
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Validate Python, shell, JSON, and desktop metadata
         shell: bash
