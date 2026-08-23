@@ -1,0 +1,44 @@
+name: Feature request
+description: Propose a focused improvement to KDE ASCII Saver
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the user problem before the proposed implementation.
+        KDE ASCII Saver must remain separate from KScreenLocker's authentication boundary.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What use case is difficult or unavailable today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Note existing commands, Plasma settings, or workarounds you tried.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: >-
+        Include relevant Plasma/session details or mockups. Do not upload private
+        artwork or personal information.
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Security boundary
+      options:
+        - label: This proposal does not replace, inhibit, unlock, or reconfigure KScreenLocker.
+          required: true

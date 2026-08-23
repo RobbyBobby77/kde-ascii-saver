@@ -117,5 +117,79 @@ class EditorCommandTests(unittest.TestCase):
         self.assertEqual(run.call_args[0][0][0], "/usr/bin/vim")
 
 
+class StopCommandTests(unittest.TestCase):
+    def test_stop_uses_identity_checked_signal(self) -> None:
+        output = io.StringIO()
+        with mock.patch("ctl.current_pid", return_value=42), mock.patch(
+            "ctl.send_signal_if_matches", return_value=True
+        ) as send, mock.patch("sys.stdout", output):
+            ctl.command_stop()
+        send.assert_called_once_with(42, ctl.signal.SIGTERM, ctl.process_matches_installed_saver)
+        self.assertIn("Stopped", output.getvalue())
+
+    def test_stop_is_idempotent_when_not_running(self) -> None:
+        output = io.StringIO()
+        with mock.patch("ctl.current_pid", return_value=None), mock.patch(
+            "ctl.send_signal_if_matches"
+        ) as send, mock.patch("sys.stdout", output):
+            ctl.command_stop()
+        send.assert_not_called()
+        self.assertIn("not running", output.getvalue())
+
+    def test_stop_handles_exit_between_lookup_and_signal(self) -> None:
+        output = io.StringIO()
+        with mock.patch("ctl.current_pid", return_value=42), mock.patch(
+            "ctl.send_signal_if_matches", return_value=False
+        ), mock.patch("sys.stdout", output):
+            ctl.command_stop()
+        self.assertIn("no longer running", output.getvalue())
+
+    def test_stop_handles_permission_error_without_traceback(self) -> None:
+        output = io.StringIO()
+        with mock.patch("ctl.current_pid", return_value=42), mock.patch(
+            "ctl.send_signal_if_matches", side_effect=PermissionError
+        ), mock.patch("sys.stdout", output):
+            ctl.command_stop()
+        self.assertIn("permission denied", output.getvalue())
+
+
+class UninstallCommandTests(unittest.TestCase):
+    def test_delegates_to_installed_hardened_uninstaller(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            installed_data = Path(tmp)
+            uninstaller = installed_data / "uninstall.sh"
+            uninstaller.write_text("#!/bin/sh\n", encoding="utf-8")
+            uninstaller.chmod(0o755)
+            completed = mock.Mock(returncode=0)
+            with mock.patch.object(ctl, "data_dir", installed_data), mock.patch(
+                "ctl.subprocess.run", return_value=completed
+            ) as run:
+                ctl.command_uninstall()
+        run.assert_called_once_with(
+            [str(uninstaller), "--non-interactive"],
+            check=False,
+        )
+
+    def test_reports_hardened_uninstaller_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            installed_data = Path(tmp)
+            uninstaller = installed_data / "uninstall.sh"
+            uninstaller.write_text("#!/bin/sh\n", encoding="utf-8")
+            uninstaller.chmod(0o755)
+            completed = mock.Mock(returncode=7)
+            with mock.patch.object(ctl, "data_dir", installed_data), mock.patch(
+                "ctl.subprocess.run", return_value=completed
+            ), self.assertRaises(SystemExit) as raised:
+                ctl.command_uninstall()
+        self.assertIn("status 7", str(raised.exception))
+
+    def test_refuses_when_hardened_uninstaller_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            ctl, "data_dir", Path(tmp)
+        ), self.assertRaises(SystemExit) as raised:
+            ctl.command_uninstall()
+        self.assertIn("uninstaller is missing", str(raised.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

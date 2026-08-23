@@ -6,6 +6,7 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -55,11 +56,11 @@ static QString watcherRuntimeFile(const QString &suffix)
 
 static bool processMatchesWatcher(pid_t pid)
 {
-    QFile cmdline(QStringLiteral("/proc/%1/cmdline").arg(pid));
-    if (!cmdline.open(QIODevice::ReadOnly)) {
-        return false;
-    }
-    return cmdline.readAll().contains("kde-ascii-saver-watcher");
+    const QFileInfo processExecutable(QStringLiteral("/proc/%1/exe").arg(pid));
+    const QFileInfo watcherExecutable(QCoreApplication::applicationFilePath());
+    const QString processPath = processExecutable.canonicalFilePath();
+    const QString watcherPath = watcherExecutable.canonicalFilePath();
+    return !processPath.isEmpty() && !watcherPath.isEmpty() && processPath == watcherPath;
 }
 
 static bool watcherPidFileIsStale(const QString &path)
@@ -172,8 +173,9 @@ public:
     ~IdleWatcher() override
     {
         stopSaver();
-        if (m_process.state() != QProcess::NotRunning) {
-            m_process.waitForFinished(1500);
+        if (m_process.state() != QProcess::NotRunning && !m_process.waitForFinished(1500)) {
+            m_process.kill();
+            m_process.waitForFinished(500);
         }
         KIdleTime::instance()->removeAllIdleTimeouts();
         KIdleTime::instance()->stopCatchingResumeEvent();

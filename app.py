@@ -263,11 +263,25 @@ class SaverApplication(Gtk.Application):
         self.stopping = False
         self.pid_file: Path | None = None
         self._monitors = None
+        self._screen_lock_bus: Gio.DBusConnection | None = None
+        self._screen_lock_subscriptions: list[int] = []
+        self._screen_lock_ready = False
+        self._screen_lock_query_pending = False
         # Probed in do_startup after GTK connects a display; fullscreen fallback otherwise.
         self.layer_shell = False
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
+        if not self._watch_screen_lock():
+            # This application is a visual overlay, never a locking surface.
+            # Fail closed when lock handoff cannot be observed.
+            print(
+                "kde-ascii-saver: could not monitor KScreenLocker; refusing to start",
+                file=sys.stderr,
+            )
+            self.stopping = True
+            self.quit()
+            return
         display = Gdk.Display.get_default()
         self.layer_shell = bool(
             display is not None and Gtk4LayerShell is not None and Gtk4LayerShell.is_supported()
@@ -280,6 +294,11 @@ class SaverApplication(Gtk.Application):
         self.set_accels_for_action("app.quit", ["Escape"])
 
     def do_activate(self) -> None:
+        # The initial GetActive reply must arrive before any visual surface is
+        # created. This avoids a brief overlay when a process is launched into
+        # an already-locked session.
+        if self.stopping or not self._screen_lock_ready:
+            return
         if self.get_windows():
             for window in self.get_windows():
                 window.present()
@@ -301,6 +320,110 @@ class SaverApplication(Gtk.Application):
         if self._monitors is not None:
             self._monitors.connect("items-changed", self._on_monitors_changed)
         self._sync_monitor_windows()
+
+    def _watch_screen_lock(self) -> bool:
+        """Subscribe before creating windows, then query the current lock state."""
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        except GLib.Error:
+            return False
+        if bus is None:
+            return False
+
+        self._screen_lock_bus = bus
+        self._screen_lock_subscriptions = [
+            bus.signal_subscribe(
+                "org.kde.screensaver",
+                "org.kde.screensaver",
+                "AboutToLock",
+                "/ScreenSaver",
+                None,
+                Gio.DBusSignalFlags.NONE,
+                self._on_about_to_lock,
+                None,
+            ),
+            bus.signal_subscribe(
+                "org.freedesktop.ScreenSaver",
+                "org.freedesktop.ScreenSaver",
+                "ActiveChanged",
+                "/ScreenSaver",
+                None,
+                Gio.DBusSignalFlags.NONE,
+                self._on_active_changed,
+                None,
+            ),
+        ]
+        # Keep the Gtk.Application registered while do_activate waits for this
+        # asynchronous reply; otherwise it can exit because it has no window.
+        self.hold()
+        self._screen_lock_query_pending = True
+        try:
+            bus.call(
+                "org.freedesktop.ScreenSaver",
+                "/ScreenSaver",
+                "org.freedesktop.ScreenSaver",
+                "GetActive",
+                None,
+                GLib.VariantType.new("(b)"),
+                Gio.DBusCallFlags.NONE,
+                1000,
+                None,
+                self._on_get_active_finished,
+                None,
+            )
+        except GLib.Error:
+            self._finish_screen_lock_query()
+            return False
+        return True
+
+    def _finish_screen_lock_query(self) -> None:
+        if self._screen_lock_query_pending:
+            self._screen_lock_query_pending = False
+            self.release()
+
+    def _on_about_to_lock(self, *_args) -> None:
+        self.quit_saver()
+
+    def _on_active_changed(
+        self,
+        _connection,
+        _sender_name,
+        _object_path,
+        _interface_name,
+        _signal_name,
+        parameters,
+        _user_data,
+    ) -> None:
+        try:
+            active = bool(parameters.unpack()[0])
+        except (AttributeError, IndexError, TypeError):
+            return
+        if active:
+            self.quit_saver()
+
+    def _on_get_active_finished(self, connection, result, _user_data) -> None:
+        try:
+            active = bool(connection.call_finish(result).unpack()[0])
+        except (GLib.Error, AttributeError, IndexError, TypeError) as error:
+            if not self.stopping:
+                print(
+                    f"kde-ascii-saver: could not query KScreenLocker: {error}",
+                    file=sys.stderr,
+                )
+                self.stopping = True
+                self._finish_screen_lock_query()
+                self.quit()
+            return
+        if self.stopping:
+            self._finish_screen_lock_query()
+            return
+        if active:
+            self._finish_screen_lock_query()
+            self.quit_saver()
+            return
+        self._screen_lock_ready = True
+        self.activate()
+        self._finish_screen_lock_query()
 
     def _on_monitors_changed(self, _model, _position, _removed, _added) -> None:
         self._sync_monitor_windows()
@@ -365,6 +488,12 @@ class SaverApplication(Gtk.Application):
         self.quit()
 
     def do_shutdown(self) -> None:
+        bus = self._screen_lock_bus
+        if bus is not None:
+            for subscription in self._screen_lock_subscriptions:
+                bus.signal_unsubscribe(subscription)
+        self._screen_lock_subscriptions.clear()
+        self._screen_lock_bus = None
         path = self.pid_file
         if path is not None:
             try:

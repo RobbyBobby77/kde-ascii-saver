@@ -5,11 +5,11 @@
 ![Wayland and X11](https://img.shields.io/badge/display-Wayland_%7C_X11-6c63ff)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-An Omarchy-inspired animated ASCII screensaver for KDE Plasma 6. It renders
-custom artwork through random
+An Omarchy-inspired animated ASCII idle screen for KDE Plasma 6. It displays
+custom artwork with random
 [TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects)
-animations across every monitor and disappears on the first keyboard, pointer,
-click, or scroll event.
+animations on every monitor, then disappears on the first keyboard or pointer
+input.
 
 ```text
   ██████╗ ██╗      █████╗ ███████╗███╗   ███╗ █████╗
@@ -21,70 +21,71 @@ click, or scroll event.
 ```
 
 > [!IMPORTANT]
-> KDE ASCII Saver is a visual idle screen, not an authentication screen.
-> KScreenLocker remains responsible for security. The project never changes
+> KDE ASCII Saver is decorative, not an authentication screen. KScreenLocker
+> remains responsible for securing the session. This project does not change
 > Plasma's lock delay, lock-on-resume behavior, or PowerDevil settings.
 
-## Features
+## Install
 
-- Random TTE animations with editable ASCII artwork
-- One fullscreen surface per monitor
-- KWin Layer Shell overlays on Plasma Wayland, including panel coverage
-  (probed after GTK connects a display)
-- Borderless fullscreen fallback for X11 or unavailable Layer Shell support
-- Native KDE Frameworks `KIdleTime` idle and resume detection
-- Immediate handoff when KScreenLocker begins locking
-- Manual launcher and a complete `kde-ascii-saverctl` command-line interface
-- Upgrade-safe user configuration and a clean uninstaller
-
-## Status
-
-Version `0.1.0` is an initial preview. The native watcher is continuously built
-on Fedora and Debian with Qt 6 and KF6 KIdleTime, and the renderer has passed
-GTK, VTE, and TerminalTextEffects smoke tests. Final acceptance testing on a
-real Plasma 6 Wayland session—especially mixed-DPI multi-monitor setups—is
-still on the roadmap.
-
-## Quick start on Linux
-
-Ask the project for the correct dependency command for the current distro:
+On a supported Plasma 6 system, run:
 
 ```sh
-./scripts/dependency-hint.sh
+curl -fsSL https://raw.githubusercontent.com/RobbyBobby77/kde-ascii-saver/main/install-online.sh | bash
 ```
 
-Install those packages, then clone and install:
+The bootstrap downloads the latest stable tagged release, verifies its SHA-256
+checksum, and runs the bundled user-local installer. The installer never uses
+`sudo`; if system packages are missing, it prints the command for you to review
+and run.
+
+If you prefer to inspect the bootstrap before running it:
 
 ```sh
-git clone https://github.com/RobbyBobby77/kde-ascii-saver.git
-cd kde-ascii-saver
-./install.sh
+curl -fsSLO https://raw.githubusercontent.com/RobbyBobby77/kde-ascii-saver/main/install-online.sh
+less install-online.sh
+bash install-online.sh
 ```
 
-Because the repository is currently private, cloning requires a GitHub account
-with access. The installer builds the small native watcher, creates an isolated
-Python environment, registers the application, and enables either a Plasma
-systemd user service or a portable XDG session-autostart entry. Existing
-artwork and configuration survive upgrades.
+You can also [install from a Git clone](docs/INSTALLATION.md#install-from-a-git-clone).
+See the [installation guide](docs/INSTALLATION.md) for supported systems,
+dependencies, upgrades, and uninstall instructions.
 
-Launch wrappers are installed to `~/.local/bin`. Add that directory to `PATH`
-if `kde-ascii-saverctl` is not found after install:
+## What it does
+
+- Shows editable ASCII artwork with randomly selected TTE animations.
+- Creates one fullscreen surface per monitor.
+- Uses KWin Layer Shell on Plasma Wayland for panel coverage, with a normal
+  fullscreen fallback on X11 or when Layer Shell is unavailable.
+- Uses KDE Frameworks `KIdleTime` for native Plasma Wayland and X11 idle
+  detection.
+- Gets out of the way when KScreenLocker starts locking.
+- Provides a preview, manual launch, and a command-line control utility.
+- Preserves user configuration and artwork across upgrades and uninstall.
+
+## Requirements and status
+
+KDE ASCII Saver targets Linux distributions with KDE Plasma 6, Qt 6, KDE
+Frameworks 6, GTK 4, and VTE 3.91. Fedora/RHEL, Debian/Ubuntu, Arch-family, and
+openSUSE package commands are documented in the
+[distribution guide](docs/DISTRIBUTIONS.md). GTK4 Layer Shell is recommended
+on Wayland but is optional.
+
+Version `0.1.0` is an initial preview. CI builds the watcher and validates the
+renderer dependencies on Fedora and Debian. A complete, recorded acceptance
+pass on real Plasma 6 Wayland and X11 hardware is still required before this
+project should be described as stable; see the
+[release checklist](docs/RELEASE_CHECKLIST.md). A public screenshot or short
+recording must come from that real-session pass and has not been added yet.
+
+## Use it
+
+The installer places commands in `~/.local/bin`:
 
 ```sh
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-The watcher waits for the next real input event before arming its first timeout.
-This prevents installation or a watcher restart from suddenly covering an
-already-idle desktop. A runtime lock also prevents duplicate watcher processes.
-
-## Usage
-
-```sh
-kde-ascii-saverctl start        # start fullscreen now
+kde-ascii-saverctl start        # show the fullscreen saver now
 kde-ascii-saverctl preview      # open a decorated preview window
 kde-ascii-saverctl stop         # close it
-kde-ascii-saverctl edit         # edit the ASCII art
+kde-ascii-saverctl edit         # edit the ASCII artwork
 kde-ascii-saverctl prefs        # open config.json
 kde-ascii-saverctl delay 180    # set the idle delay in seconds
 kde-ascii-saverctl disable      # pause automatic launch
@@ -92,24 +93,26 @@ kde-ascii-saverctl enable
 kde-ascii-saverctl status
 ```
 
-The default idle delay is 120 seconds. Plasma's normal lock shortcut and
-automatic KScreenLocker behavior remain unchanged.
+If the command is not found, add the user binary directory to your shell path:
 
-## Customization
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
 
-Artwork is stored in:
+The default idle delay is 120 seconds. The watcher waits for the next real
+input event before arming its first timeout, so installing or restarting it on
+an already-idle desktop does not suddenly cover the screen.
+
+## Customize it
+
+Artwork and settings live under `~/.config/kde-ascii-saver/` by default:
 
 ```text
 ~/.config/kde-ascii-saver/logo.txt
-```
-
-Visual and idle settings are stored in:
-
-```text
 ~/.config/kde-ascii-saver/config.json
 ```
 
-Example:
+Example configuration:
 
 ```json
 {
@@ -122,57 +125,38 @@ Example:
 }
 ```
 
-## Install on another computer
+The project honors `XDG_CONFIG_HOME` and `XDG_DATA_HOME`. Existing config and
+artwork are not overwritten during an upgrade.
 
-The simplest route is Git. For an offline transfer, create an archive:
+## Help and security
 
-```sh
-cd ~/Documents
-tar -czf ~/kde-ascii-saver.tar.gz kde-ascii-saver
-```
-
-Move the archive by USB, cloud storage, or `scp`, then run on the Plasma system:
+Start with:
 
 ```sh
-tar -xzf kde-ascii-saver.tar.gz
-cd kde-ascii-saver
-./install.sh
+kde-ascii-saverctl status
+systemctl --user status kde-ascii-saver.service
+journalctl --user -u kde-ascii-saver.service -b
 ```
 
-Run `./scripts/dependency-hint.sh` first on a new machine. It recognizes
-Fedora/RHEL, Debian/Ubuntu, Arch-family, and openSUSE systems. For other package
-managers, see the [distribution guide](docs/DISTRIBUTIONS.md).
+Systems without a systemd user manager use an XDG session-autostart entry
+instead. The [troubleshooting guide](docs/TROUBLESHOOTING.md) covers both paths.
+For general help, see [Support](SUPPORT.md); report vulnerabilities privately
+as described in [Security](SECURITY.md).
 
-To migrate custom artwork and settings, also copy
-`~/.config/kde-ascii-saver/` to the same location on the destination computer.
+The application runs entirely as the logged-in user. It does not collect
+telemetry, send artwork or settings to the project, or require an account after
+installation. Installation fetches a release from GitHub and installs a
+version-pinned, hash-verified TerminalTextEffects package from PyPI into an
+isolated virtual environment.
 
-## Architecture and security
+## Project documentation
 
-The renderer uses GTK 4, VTE, and GTK4 Layer Shell. Layer Shell is probed only
-after GTK has a display, so the overlay path can actually succeed on Plasma
-Wayland. A small Qt 6 helper uses KDE Frameworks `KIdleTime`, which is required
-because KScreenLocker's D-Bus idle-time query is unsupported on Plasma Wayland.
-The watcher listens for both `AboutToLock` and `ActiveChanged`, removing all
-visual surfaces before the secure lock screen takes over.
-
-See [Architecture](docs/ARCHITECTURE.md),
-[Distributions](docs/DISTRIBUTIONS.md), and [Security](SECURITY.md) for the
-full design, package mappings, and trust boundary.
-
-## Development
-
-See [Contributing](CONTRIBUTING.md) for build commands and the Plasma test
-matrix. CI compiles the KF6 watcher, runs the Python unit tests, and validates
-the Python, shell, JSON, desktop-entry, and GObject-introspection surfaces on
-Fedora and Debian.
-
-## Uninstall
-
-```sh
-./uninstall.sh
-```
-
-The uninstaller deliberately preserves `~/.config/kde-ascii-saver/`.
+- [Installation and maintenance](docs/INSTALLATION.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Architecture and trust boundaries](docs/ARCHITECTURE.md)
+- [Distribution support](docs/DISTRIBUTIONS.md)
+- [Release and Plasma acceptance checklist](docs/RELEASE_CHECKLIST.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## Credits
 

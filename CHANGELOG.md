@@ -6,6 +6,10 @@ All notable changes to this project will be documented here.
 
 ### Added
 
+- A checksum-verifying online installer for the latest stable tagged release.
+- Public installation, maintenance, troubleshooting, support, security, and
+  release-acceptance documentation.
+- Structured GitHub forms for bug reports and feature requests.
 - Dependency guidance for Fedora/RHEL, Debian/Ubuntu, Arch, openSUSE, and
   manually packaged distributions.
 - Fedora and Debian native-watcher builds in CI.
@@ -16,6 +20,9 @@ All notable changes to this project will be documented here.
 
 ### Changed
 
+- Make the verified online installer the recommended install path while keeping
+  inspect-before-run and Git-clone alternatives.
+- Pin TerminalTextEffects 0.15.0 with hashes for reproducible installation.
 - Resolve Python from `PATH` instead of assuming `/usr/bin/python3`.
 - Report either systemd or XDG autostart integration in controller status.
 - Probe GTK4 Layer Shell after GTK connects a display.

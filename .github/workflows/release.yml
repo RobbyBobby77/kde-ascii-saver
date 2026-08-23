@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Validate tagged source
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Build and publish source release
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag and project version match
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(head -n 1 VERSION)
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            printf 'Tag %s does not match VERSION %s\n' "$GITHUB_REF_NAME" "$version" >&2
+            exit 1
+          fi
+
+      - name: Build archives and checksums
+        run: ./scripts/build-release.sh dist
+
+      - name: Validate release contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(head -n 1 VERSION)
+          sha256sum --check "dist/kde-ascii-saver-$version.tar.gz.sha256"
+          sha256sum --check dist/kde-ascii-saver.tar.gz.sha256
+          tar -tzf "dist/kde-ascii-saver-$version.tar.gz" >archive-contents.txt
+          grep -qx "kde-ascii-saver-$version/install-online.sh" archive-contents.txt
+          grep -qx "kde-ascii-saver-$version/install.sh" archive-contents.txt
+          grep -qx "kde-ascii-saver-$version/uninstall.sh" archive-contents.txt
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kde-ascii-saver-${{ github.ref_name }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            release_kind=()
+            if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+              release_kind+=(--prerelease)
+            fi
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --verify-tag \
+              --title "KDE ASCII Saver $GITHUB_REF_NAME" \
+              --generate-notes \
+              "${release_kind[@]}"
+          fi

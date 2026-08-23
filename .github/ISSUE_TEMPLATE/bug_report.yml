@@ -1,0 +1,87 @@
+name: Bug report
+description: Report a reproducible problem with KDE ASCII Saver
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Search existing issues first.
+        For a suspected security issue, stop and use private vulnerability reporting instead.
+  - type: input
+    id: version
+    attributes:
+      label: KDE ASCII Saver version
+      description: Run `kde-ascii-saverctl --version`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Distribution, KDE Plasma version, and Wayland or X11.
+      placeholder: "Fedora 44, Plasma 6.x, Wayland"
+    validations:
+      required: true
+  - type: input
+    id: monitors
+    attributes:
+      label: Monitor setup
+      description: Number of monitors, resolutions, scale factors, and layout if relevant.
+      placeholder: "Two monitors; 2560x1440 at 100% and 3840x2160 at 150%"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide a minimal, numbered sequence that reproduces the issue.
+      placeholder: |
+        1. Run ...
+        2. Wait ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Status and relevant logs
+      description: >-
+        Paste `kde-ascii-saverctl status` and only the relevant log excerpt.
+        Redact usernames, hostnames, tokens, private artwork, and unrelated data.
+      render: shell
+  - type: dropdown
+    id: integration
+    attributes:
+      label: Idle integration
+      options:
+        - systemd user service
+        - XDG session autostart
+        - Unknown or not applicable
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and read the troubleshooting guide.
+          required: true
+        - label: This report does not contain secrets or private information.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

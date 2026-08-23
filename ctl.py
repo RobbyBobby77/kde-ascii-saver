@@ -11,7 +11,17 @@ import signal
 import subprocess
 from pathlib import Path
 
-from helpers import DEFAULT_CONFIG, editor_argv, load_config as load_config_file, read_version, runtime_dir
+from helpers import (
+    DEFAULT_CONFIG,
+    editor_argv,
+    load_config as load_config_file,
+    pid_from_file,
+    process_matches_saver,
+    process_matches_watcher,
+    read_version,
+    runtime_dir,
+    send_signal_if_matches,
+)
 
 
 home = Path.home()
@@ -24,6 +34,14 @@ launcher = home / ".local" / "bin" / "kde-ascii-saver"
 service = "kde-ascii-saver.service"
 autostart_file = config_home / "autostart" / "kde-ascii-saver-watcher.desktop"
 VERSION = read_version()
+
+
+def process_matches_installed_saver(pid: int) -> bool:
+    return process_matches_saver(pid, data_dir / "app.py")
+
+
+def process_matches_installed_watcher(pid: int) -> bool:
+    return process_matches_watcher(pid, data_dir / "kde-ascii-saver-watcher")
 
 
 def pid_file() -> Path | None:
@@ -82,38 +100,12 @@ def update_config(key: str, value) -> None:
 
 def current_pid() -> int | None:
     path = pid_file()
-    if path is None:
-        return None
-    try:
-        pid = int(path.read_text(encoding="ascii"))
-        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
-        return pid if b"kde-ascii-saver" in cmdline or b"app.py" in cmdline else None
-    except (OSError, ValueError):
-        return None
+    return None if path is None else pid_from_file(path, process_matches_installed_saver)
 
 
 def current_watcher_pid() -> int | None:
     path = watcher_pid_file()
-    if path is None:
-        return None
-    try:
-        pid = int(path.read_text(encoding="ascii"))
-        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
-        return pid if b"kde-ascii-saver-watcher" in cmdline else None
-    except (OSError, ValueError):
-        return None
-
-
-def stop_watcher() -> None:
-    pid = current_watcher_pid()
-    if pid is not None:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-    path = watcher_pid_file()
-    if path is not None:
-        path.unlink(missing_ok=True)
+    return None if path is None else pid_from_file(path, process_matches_installed_watcher)
 
 
 def command_start(windowed: bool = False) -> None:
@@ -128,14 +120,15 @@ def command_start(windowed: bool = False) -> None:
 
 def command_stop() -> None:
     pid = current_pid()
-    path = pid_file()
     if not pid:
-        if path is not None:
-            path.unlink(missing_ok=True)
         print("KDE ASCII Saver is not running")
         return
-    os.kill(pid, signal.SIGTERM)
-    print("Stopped KDE ASCII Saver")
+    try:
+        stopped = send_signal_if_matches(pid, signal.SIGTERM, process_matches_installed_saver)
+    except PermissionError:
+        print("Could not stop KDE ASCII Saver: permission denied")
+        return
+    print("Stopped KDE ASCII Saver" if stopped else "KDE ASCII Saver is no longer running")
 
 
 def command_edit() -> None:
@@ -173,30 +166,20 @@ def command_status() -> None:
 
 
 def command_uninstall() -> None:
-    if systemd_user_available():
-        subprocess.run(
-            ["systemctl", "--user", "disable", "--now", service],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+    installed_uninstaller = data_dir / "uninstall.sh"
+    if not installed_uninstaller.is_file() or not os.access(installed_uninstaller, os.X_OK):
+        raise SystemExit(
+            "kde-ascii-saverctl: the hardened uninstaller is missing; "
+            "reinstall KDE ASCII Saver or run uninstall.sh from a trusted source checkout"
         )
-    stop_watcher()
-    for path in (
-        data_dir,
-        data_home / "applications" / "io.github.kde_ascii_saver.KdeAsciiSaver.desktop",
-        config_home / "systemd" / "user" / service,
-        autostart_file,
-        home / ".local" / "bin" / "kde-ascii-saver",
-        home / ".local" / "bin" / "kde-ascii-saverctl",
-        home / ".local" / "bin" / "kde-ascii-saver-watcher",
-    ):
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink(missing_ok=True)
-    if systemd_user_available():
-        subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
-    print(f"Removed the application and idle integration. Your art is preserved in {config_dir}")
+    completed = subprocess.run(
+        [str(installed_uninstaller), "--non-interactive"],
+        check=False,
+    )
+    if completed.returncode:
+        raise SystemExit(
+            f"kde-ascii-saverctl: uninstaller exited with status {completed.returncode}"
+        )
 
 
 def main() -> int:
@@ -237,8 +220,6 @@ def main() -> int:
     elif args.command == "status":
         command_status()
     elif args.command == "uninstall":
-        if current_pid():
-            command_stop()
         command_uninstall()
     return 0
 

@@ -72,6 +72,10 @@ kde-ascii-saverctl status
 kde-ascii-saverctl preview
 ```
 
+These commands assume a source checkout. Most users should start with the
+checksum-verifying command in the [installation guide](INSTALLATION.md), which
+still reports any missing system dependencies for the user to install.
+
 Launch wrappers live in `~/.local/bin`. Add that directory to `PATH` if the
 commands are not found.
 
@@ -93,4 +97,5 @@ KScreenLocker behavior.
   the renderer's introspection dependencies.
 - The GTK/VTE/TTE renderer has live smoke coverage on Fedora GNOME Wayland.
 - A real Plasma 6 Wayland/X11 acceptance pass remains required before a stable
-  release, regardless of distribution.
+  release, regardless of distribution. Results should be recorded against the
+  [release checklist](RELEASE_CHECKLIST.md).
