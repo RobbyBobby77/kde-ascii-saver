@@ -1,0 +1,9 @@
+# Dependabot version updates for GitHub Actions.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    # Workflow files live under .github/workflows; directory is the repo root.
+    directory: "/"
+    schedule:
+      interval: "weekly"

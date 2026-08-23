@@ -1,5 +1,10 @@
 # Security
 
+## Supported versions
+
+Security fixes are applied to the latest code on the default branch while the
+project is in its initial 0.x series.
+
 ## Security model
 
 KDE ASCII Saver is decorative software. It does not authenticate the user and
@@ -13,6 +18,11 @@ KScreenLocker remains the only security boundary. KDE ASCII Saver:
 - does not call `SetActive(false)` or attempt to unlock the session;
 - exits when KScreenLocker announces `AboutToLock` or becomes active; and
 - runs entirely as the logged-in user without elevated privileges.
+
+Installation writes only to the current user's XDG data and config locations,
+`~/.local/bin`, and the systemd user-unit directory. The only downloaded
+runtime dependency is installed into the application's isolated Python
+environment from the package index.
 
 If the visual saver and KScreenLocker activate at nearly the same time,
 KScreenLocker's session-lock surface takes precedence and blocks access to the

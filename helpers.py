@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import shutil
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 
@@ -18,9 +20,9 @@ DEFAULT_CONFIG = {
     "frame_rate": 60,
     "exclude_effects": ["bouncyballs", "overflow"],
 }
-TTE_RESTART_MS = 80
-TTE_MAX_FAILURES = 8
-TTE_BACKOFF_CAP_MS = 5000
+# Same waitpid-aware budget as gnome-ascii-saver: five failures, uncapped delays.
+TTE_SUCCESS_RESTART_MS = 80
+TTE_MAX_FAILURES = 5
 FALLBACK_VERSION = "0.1.0"
 
 
@@ -129,20 +131,101 @@ def load_config(path: Path) -> dict:
     return _apply_config(config, loaded, path)
 
 
-def tte_restart_after(status: int, failures: int) -> tuple[int, int] | None:
-    """Return (delay_ms, updated_failures) or None to stop the saver.
+def tte_exit_ok(status: int) -> bool:
+    """True when a TTE child finished an effect successfully.
 
-    A zero wait/exit status is a completed effect. Anything else is a crash or
-    missing resource: exponential backoff from TTE_RESTART_MS, capped, then
-    give up after TTE_MAX_FAILURES consecutive failures.
+    VTE reports a waitpid-style status. A decoded exit code of 0 is also
+    treated as success. A raw `status == 0` check is not enough: exit code 1
+    is encoded as `1 << 8`.
     """
-    if status == 0:
-        return TTE_RESTART_MS, 0
-    failures += 1
-    if failures >= TTE_MAX_FAILURES:
+    if os.WIFEXITED(status):
+        return os.WEXITSTATUS(status) == 0
+    if os.WIFSIGNALED(status):
+        return False
+    return status == 0
+
+
+def tte_failure_delay_ms(consecutive_failures: int) -> int | None:
+    """Exponential backoff after a failed TTE child, or None to give up."""
+    if consecutive_failures < 1:
+        raise ValueError("consecutive_failures must be >= 1")
+    if consecutive_failures >= TTE_MAX_FAILURES:
         return None
-    delay = min(TTE_BACKOFF_CAP_MS, TTE_RESTART_MS * (2 ** (failures - 1)))
+    return TTE_SUCCESS_RESTART_MS * (2 ** (consecutive_failures - 1))
+
+
+def tte_restart_after(status: int, failures: int) -> tuple[int, int] | None:
+    """Return (delay_ms, updated_failures) or None to stop the saver."""
+    if tte_exit_ok(status):
+        return TTE_SUCCESS_RESTART_MS, 0
+    failures += 1
+    delay = tte_failure_delay_ms(failures)
+    if delay is None:
+        return None
     return delay, failures
+
+
+def runtime_dir(env: Mapping[str, str] | None = None) -> Path | None:
+    """Return $XDG_RUNTIME_DIR, or None. Never fall back to /tmp."""
+    value = (os.environ if env is None else env).get("XDG_RUNTIME_DIR")
+    return Path(value).expanduser() if value else None
+
+
+def pid_file_path(
+    env: Mapping[str, str] | None = None,
+    *,
+    uid: int | None = None,
+) -> Path:
+    directory = runtime_dir(env)
+    if directory is None:
+        raise RuntimeError("XDG_RUNTIME_DIR is unset; refusing to use a world-writable PID path")
+    resolved_uid = os.getuid() if uid is None else uid
+    return directory / f"kde-ascii-saver-{resolved_uid}.pid"
+
+
+def process_matches_saver(pid: int) -> bool:
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+    return b"kde-ascii-saver" in cmdline or b"app.py" in cmdline
+
+
+def pid_file_is_stale(path: Path) -> bool:
+    try:
+        pid = int(path.read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return True
+    return not process_matches_saver(pid)
+
+
+def write_pid_file(path: Path, pid: int) -> Path:
+    """Claim a PID file with O_EXCL / 0600, replacing only a stale file."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags, 0o600)
+    except FileExistsError:
+        if not pid_file_is_stale(path):
+            raise RuntimeError(f"pid file {path} is already claimed") from None
+        path.unlink(missing_ok=True)
+        fd = os.open(path, flags, 0o600)
+    try:
+        os.write(fd, f"{pid}\n".encode("ascii"))
+    finally:
+        os.close(fd)
+    return path
+
+
+def current_saver_pid(path: Path | None = None) -> int | None:
+    try:
+        pid_path = path if path is not None else pid_file_path()
+        pid = int(pid_path.read_text(encoding="ascii").strip())
+    except (OSError, ValueError, RuntimeError):
+        return None
+    return pid if process_matches_saver(pid) else None
 
 
 def editor_argv(editor: str) -> list[str]:

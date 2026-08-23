@@ -16,7 +16,9 @@
 #include <QTimer>
 #include <QtGlobal>
 
+#include <cerrno>
 #include <csignal>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -49,6 +51,52 @@ static QString watcherRuntimeFile(const QString &suffix)
     }
     return directory + QStringLiteral("/kde-ascii-saver-watcher-")
         + QString::number(getuid()) + suffix;
+}
+
+static bool processMatchesWatcher(pid_t pid)
+{
+    QFile cmdline(QStringLiteral("/proc/%1/cmdline").arg(pid));
+    if (!cmdline.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    return cmdline.readAll().contains("kde-ascii-saver-watcher");
+}
+
+static bool watcherPidFileIsStale(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return true;
+    }
+    bool ok = false;
+    const qint64 pid = QString::fromLatin1(file.readAll().trimmed()).toLongLong(&ok);
+    if (!ok || pid <= 0) {
+        return true;
+    }
+    return !processMatchesWatcher(static_cast<pid_t>(pid));
+}
+
+static bool writeExclusivePidFile(const QString &path, qint64 pid)
+{
+    const QByteArray encoded = QFile::encodeName(path);
+    int flags = O_CREAT | O_EXCL | O_WRONLY;
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+    int fd = ::open(encoded.constData(), flags, 0600);
+    if (fd < 0) {
+        if (errno != EEXIST || !watcherPidFileIsStale(path) || !QFile::remove(path)) {
+            return false;
+        }
+        fd = ::open(encoded.constData(), flags, 0600);
+        if (fd < 0) {
+            return false;
+        }
+    }
+    const QByteArray payload = QByteArray::number(pid) + '\n';
+    const ssize_t written = ::write(fd, payload.constData(), static_cast<size_t>(payload.size()));
+    const int closeResult = ::close(fd);
+    return written == payload.size() && closeResult == 0;
 }
 
 class IdleWatcher final : public QObject
@@ -194,17 +242,19 @@ private:
     void userResumed()
     {
         stopSaver();
+        if (m_locked) {
+            // AboutToLock can fire and then be cancelled without ActiveChanged(false).
+            refreshLockFromBus();
+        }
         if (m_waitingForInitialResume) {
             m_waitingForInitialResume = false;
             armTimeout();
         }
     }
 
-    bool screenLocked() const
+    bool queryScreenActive() const
     {
-        if (m_locked) {
-            return true;
-        }
+        // 1s timeout: the default QDBus block is ~25s and would stall resume handling.
         auto message = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.ScreenSaver"),
                                                      QStringLiteral("/ScreenSaver"),
                                                      QStringLiteral("org.freedesktop.ScreenSaver"),
@@ -214,6 +264,19 @@ private:
             return m_locked;
         }
         return reply.arguments().constFirst().toBool();
+    }
+
+    void refreshLockFromBus()
+    {
+        m_locked = queryScreenActive();
+    }
+
+    bool screenLocked() const
+    {
+        if (m_locked) {
+            return true;
+        }
+        return queryScreenActive();
     }
 
     void startSaver()
@@ -233,6 +296,9 @@ private:
     void pollState()
     {
         reloadConfig();
+        if (m_locked) {
+            refreshLockFromBus();
+        }
         if (m_startedByWatcher && (screenLocked() || !m_enabled)) {
             stopSaver();
         }
@@ -303,10 +369,10 @@ int main(int argc, char *argv[])
         }
     }
 
-    QFile pidFile(watcherRuntimeFile(QStringLiteral(".pid")));
-    if (pidFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        pidFile.write(QByteArray::number(QCoreApplication::applicationPid()));
-        pidFile.close();
+    const QString pidPath = watcherRuntimeFile(QStringLiteral(".pid"));
+    if (!writeExclusivePidFile(pidPath, QCoreApplication::applicationPid())) {
+        qWarning("kde-ascii-saver-watcher: could not claim PID file");
+        return 1;
     }
 
     IdleWatcher watcher;
@@ -323,6 +389,6 @@ int main(int argc, char *argv[])
                      });
 
     const int result = application.exec();
-    pidFile.remove();
+    QFile::remove(pidPath);
     return result;
 }

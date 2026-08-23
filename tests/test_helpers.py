@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -141,6 +142,37 @@ class LoadConfigTests(unittest.TestCase):
             path = self._write(tmp, '{"exclude_effects": ["matrix"]}')
             helpers.load_config(path)
         self.assertEqual(helpers.DEFAULT_CONFIG["exclude_effects"], ["bouncyballs", "overflow"])
+
+
+class RuntimeDirTests(unittest.TestCase):
+    def test_prefers_xdg_runtime_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(helpers.runtime_dir({"XDG_RUNTIME_DIR": tmp}), Path(tmp))
+
+    def test_refuses_when_unset(self) -> None:
+        self.assertIsNone(helpers.runtime_dir({}))
+        with self.assertRaises(RuntimeError):
+            helpers.pid_file_path({})
+
+
+class PidFileTests(unittest.TestCase):
+    def test_exclusive_create(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "saver.pid"
+            helpers.write_pid_file(path, 4242)
+            self.assertEqual(path.read_text(encoding="ascii").strip(), "4242")
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            with patch("helpers.pid_file_is_stale", return_value=False):
+                with self.assertRaises(RuntimeError):
+                    helpers.write_pid_file(path, 4343)
+            self.assertEqual(path.read_text(encoding="ascii").strip(), "4242")
+
+    def test_replaces_stale_pid_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "saver.pid"
+            path.write_text("1\n", encoding="ascii")
+            helpers.write_pid_file(path, 99)
+            self.assertEqual(path.read_text(encoding="ascii").strip(), "99")
 
 
 class EditorArgvTests(unittest.TestCase):
