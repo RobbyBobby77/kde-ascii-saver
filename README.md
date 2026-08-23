@@ -156,6 +156,7 @@ isolated virtual environment.
 - [Architecture and trust boundaries](docs/ARCHITECTURE.md)
 - [Distribution support](docs/DISTRIBUTIONS.md)
 - [Release and Plasma acceptance checklist](docs/RELEASE_CHECKLIST.md)
+- [Version 0.1.0 acceptance record](docs/ACCEPTANCE-0.1.0.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Credits
