@@ -11,7 +11,7 @@ import signal
 import subprocess
 from pathlib import Path
 
-from helpers import DEFAULT_CONFIG, editor_argv, load_config as load_config_file, read_version
+from helpers import DEFAULT_CONFIG, editor_argv, load_config as load_config_file, read_version, runtime_dir
 
 
 home = Path.home()
@@ -24,11 +24,6 @@ launcher = home / ".local" / "bin" / "kde-ascii-saver"
 service = "kde-ascii-saver.service"
 autostart_file = config_home / "autostart" / "kde-ascii-saver-watcher.desktop"
 VERSION = read_version()
-
-
-def runtime_dir() -> Path | None:
-    value = os.environ.get("XDG_RUNTIME_DIR")
-    return Path(value) if value else None
 
 
 def pid_file() -> Path | None:

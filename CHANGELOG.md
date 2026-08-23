@@ -13,6 +13,7 @@ All notable changes to this project will be documented here.
 - A single-instance watcher lock and PID-based lifecycle for autostart mode.
 - Unit tests for config merge, config validation, TTE restart backoff, and
   `$EDITOR` argv parsing.
+- Dependabot weekly updates for GitHub Actions.
 
 ### Changed
 
@@ -36,9 +37,16 @@ All notable changes to this project will be documented here.
 - Skip blocking `GetActive` once `AboutToLock` or `ActiveChanged` already
   reported a lock.
 - Compile the watcher with `-Wall -Wextra` on GCC and Clang.
+- Claim renderer and watcher PID files exclusively (`O_EXCL`, mode `0600`)
+  inside `$XDG_RUNTIME_DIR`.
+- Decode TTE child exits with waitpid helpers and give up after five
+  consecutive failures, matching gnome-ascii-saver.
+- Document default-branch-only security support and the PyPI/venv install path.
 
 ### Fixed
 
+- Probe `GetActive` while the cached lock flag is set so a cancelled
+  `AboutToLock` without `ActiveChanged(false)` cannot block idle launch.
 - Fedora/RHEL dependency hint now includes `python3-pip` and `python3-devel`.
 
 ## [0.1.0] - 2026-08-21

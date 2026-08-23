@@ -17,8 +17,11 @@ entirely under KScreenLocker control.
 - `org.freedesktop.ScreenSaver.ActiveChanged(true)` provides a second lock-state
   guard.
 - `GetActive()` prevents launch while the session is already locked. The call
-  uses a 1s timeout and is skipped once `AboutToLock` or `ActiveChanged` has
-  already reported that the locker is up.
+  uses a 1s timeout (never the default ~25s QDBus block) and is skipped on the
+  hot path once `AboutToLock` or `ActiveChanged` has reported that the locker
+  is up. While that cached lock flag is set, the 1s poll and the next resume
+  event re-query `GetActive` so a cancelled `AboutToLock` without
+  `ActiveChanged(false)` cannot leave the watcher stuck.
 
 The watcher is a `QGuiApplication`, not a `QCoreApplication`, because the
 KIdleTime Wayland backend needs access to the active Wayland seat.
@@ -27,7 +30,9 @@ A `QLockFile` in the XDG runtime directory enforces a single watcher process.
 The watcher also records a validated PID so the controller and non-systemd
 uninstaller can stop an XDG-autostarted process cleanly. Both the watcher and
 the renderer refuse to start if `XDG_RUNTIME_DIR` is unset rather than writing
-lock or PID files into world-writable `/tmp`.
+lock or PID files into world-writable `/tmp`. PID files are claimed with
+`O_CREAT|O_EXCL|O_WRONLY` (and `O_NOFOLLOW` when available), mode `0600`, and
+are replaced only when the recorded process is gone.
 
 On Wayland, KIdleTime uses `ext-idle-notify-v1` with the legacy KWin idle
 protocol as a fallback. It cannot poll current idle duration, so the watcher
@@ -41,7 +46,9 @@ already-idle desktop.
 process per terminal. The Gdk monitor list is watched so plugging or unplugging
 a display while the saver is showing adds or removes overlay windows. Completed
 effects restart automatically with a new random effect. A crashing or missing
-TTE child backs off and then gives up instead of respawning every 80 ms.
+TTE child is classified with waitpid-aware status decoding (`tte_exit_ok`),
+backs off for up to five consecutive failures, and then gives up instead of
+respawning every 80 ms.
 `config.json` values for `frame_rate`, colors, and `exclude_effects` are
 validated before they reach TTE argv.
 
@@ -55,6 +62,10 @@ mechanism.
 
 On X11, or when GTK4 Layer Shell is unavailable after that probe, the renderer
 requests a normal borderless fullscreen window on each monitor.
+
+Renderer hygiene for config sanitizing, TTE backoff, exclusive PID files,
+`$EDITOR` argv, and `VERSION` lives in `helpers.py`, vendored from the GNOME
+sibling rather than extracted as a third package.
 
 ### Control utility
 

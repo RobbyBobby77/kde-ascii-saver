@@ -26,7 +26,17 @@ else:
     Gtk4LayerShell = None
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango, Vte  # noqa: E402
 
-from helpers import load_config, read_version, tte_restart_after  # noqa: E402
+from helpers import (  # noqa: E402
+    TTE_MAX_FAILURES,
+    TTE_SUCCESS_RESTART_MS,
+    load_config,
+    pid_file_path,
+    read_version,
+    runtime_dir,
+    tte_exit_ok,
+    tte_failure_delay_ms,
+    write_pid_file,
+)
 
 
 APP_ID = "io.github.kde_ascii_saver.KdeAsciiSaver"
@@ -36,16 +46,6 @@ VERSION = read_version()
 def xdg_path(env_name: str, fallback: Path) -> Path:
     value = os.environ.get(env_name)
     return Path(value).expanduser() if value else fallback
-
-
-def runtime_dir() -> Path | None:
-    value = os.environ.get("XDG_RUNTIME_DIR")
-    return Path(value) if value else None
-
-
-def pid_file() -> Path | None:
-    directory = runtime_dir()
-    return None if directory is None else directory / f"kde-ascii-saver-{os.getuid()}.pid"
 
 
 CONFIG_DIR = Path(
@@ -232,16 +232,25 @@ class SaverWindow(Gtk.ApplicationWindow):
             return
         if self.app.stopping or self.closing:
             return
-        decision = tte_restart_after(status, self.tte_failures)
-        if decision is None:
+        if tte_exit_ok(status):
+            self.tte_failures = 0
+            GLib.timeout_add(TTE_SUCCESS_RESTART_MS, self._start)
+            return
+        self.tte_failures += 1
+        delay = tte_failure_delay_ms(self.tte_failures)
+        if delay is None:
             print(
-                "kde-ascii-saver: animation exited repeatedly "
-                f"(status {status}); giving up",
+                f"kde-ascii-saver: animation exited with status {status}; "
+                f"giving up after {TTE_MAX_FAILURES} failures",
                 file=sys.stderr,
             )
             self.app.quit_saver()
             return
-        delay, self.tte_failures = decision
+        print(
+            f"kde-ascii-saver: animation exited with status {status}; "
+            f"retrying in {delay} ms ({self.tte_failures}/{TTE_MAX_FAILURES})",
+            file=sys.stderr,
+        )
         GLib.timeout_add(delay, self._start)
 
 
@@ -252,6 +261,7 @@ class SaverApplication(Gtk.Application):
         self.once = once
         self.config = load_config(CONFIG_DIR / "config.json")
         self.stopping = False
+        self.pid_file: Path | None = None
         self._monitors = None
         # Probed in do_startup after GTK connects a display; fullscreen fallback otherwise.
         self.layer_shell = False
@@ -275,12 +285,13 @@ class SaverApplication(Gtk.Application):
                 window.present()
             return
 
-        path = pid_file()
-        if path is not None:
+        if self.pid_file is None:
             try:
-                path.write_text(str(os.getpid()), encoding="ascii")
-            except OSError as exc:
-                print(f"kde-ascii-saver: could not write PID file: {exc}", file=sys.stderr)
+                self.pid_file = write_pid_file(pid_file_path(), os.getpid())
+            except (OSError, RuntimeError) as error:
+                print(f"kde-ascii-saver: {error}", file=sys.stderr)
+                self.quit()
+                return
         if self.windowed:
             SaverWindow(self, None, True)
             return
@@ -354,7 +365,7 @@ class SaverApplication(Gtk.Application):
         self.quit()
 
     def do_shutdown(self) -> None:
-        path = pid_file()
+        path = self.pid_file
         if path is not None:
             try:
                 if path.read_text(encoding="ascii").strip() == str(os.getpid()):
