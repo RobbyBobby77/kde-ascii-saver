@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import unittest
 
-from app import TTE_BACKOFF_CAP_MS, TTE_MAX_FAILURES, TTE_RESTART_MS, tte_restart_after
+from helpers import TTE_BACKOFF_CAP_MS, TTE_MAX_FAILURES, TTE_RESTART_MS, tte_restart_after
 
 
 class TteRestartTests(unittest.TestCase):

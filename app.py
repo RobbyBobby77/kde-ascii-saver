@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import signal
 import sys
@@ -27,45 +26,11 @@ else:
     Gtk4LayerShell = None
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango, Vte  # noqa: E402
 
+from helpers import load_config, read_version, tte_restart_after  # noqa: E402
+
 
 APP_ID = "io.github.kde_ascii_saver.KdeAsciiSaver"
-DEFAULT_CONFIG = {
-    "font": "Monospace 18",
-    "background": "#000000",
-    "frame_rate": 60,
-    "exclude_effects": ["bouncyballs", "overflow"],
-}
-# Completed effects restart immediately. Crashes back off, then give up.
-TTE_RESTART_MS = 80
-TTE_MAX_FAILURES = 8
-TTE_BACKOFF_CAP_MS = 5000
-
-
-def load_version() -> str:
-    try:
-        text = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
-    except OSError:
-        return "0.1.0"
-    return text or "0.1.0"
-
-
-VERSION = load_version()
-
-
-def tte_restart_after(status: int, failures: int) -> tuple[int, int] | None:
-    """Return (delay_ms, updated_failures) or None to stop the saver.
-
-    A zero wait/exit status is a completed effect. Anything else is a crash or
-    missing resource: exponential backoff from TTE_RESTART_MS, capped, then
-    give up after TTE_MAX_FAILURES consecutive failures.
-    """
-    if status == 0:
-        return TTE_RESTART_MS, 0
-    failures += 1
-    if failures >= TTE_MAX_FAILURES:
-        return None
-    delay = min(TTE_BACKOFF_CAP_MS, TTE_RESTART_MS * (2 ** (failures - 1)))
-    return delay, failures
+VERSION = read_version()
 
 
 def xdg_path(env_name: str, fallback: Path) -> Path:
@@ -97,17 +62,6 @@ DATA_DIR = Path(
 )
 
 
-def load_config() -> dict:
-    config = DEFAULT_CONFIG.copy()
-    try:
-        loaded = json.loads((CONFIG_DIR / "config.json").read_text(encoding="utf-8"))
-        if isinstance(loaded, dict):
-            config.update(loaded)
-    except (OSError, ValueError):
-        pass
-    return config
-
-
 def parse_color(value: str, fallback: str) -> Gdk.RGBA:
     color = Gdk.RGBA()
     if not color.parse(value):
@@ -129,6 +83,7 @@ class SaverWindow(Gtk.ApplicationWindow):
         self.windowed = windowed
         self.armed = False
         self.running = False
+        self.closing = False
         self.tte_failures = 0
         self.cancellable = Gio.Cancellable()
         self.set_decorated(windowed)
@@ -220,7 +175,7 @@ class SaverWindow(Gtk.ApplicationWindow):
             "-i",
             str(CONFIG_DIR / "logo.txt"),
             "--frame-rate",
-            str(max(1, int(self.app.config["frame_rate"]))),
+            str(self.app.config["frame_rate"]),
             "--canvas-width",
             "0",
             "--canvas-height",
@@ -236,12 +191,12 @@ class SaverWindow(Gtk.ApplicationWindow):
             "--no-restore-cursor",
         ]
         excluded = self.app.config.get("exclude_effects", [])
-        if isinstance(excluded, list) and excluded:
-            argv.extend(["--exclude-effects", *map(str, excluded)])
+        if excluded:
+            argv.extend(["--exclude-effects", *excluded])
         return argv
 
     def _start(self) -> bool:
-        if self.app.stopping or self.running:
+        if self.app.stopping or self.closing or self.running:
             return GLib.SOURCE_REMOVE
         self.running = True
         self.terminal.spawn_async(
@@ -261,18 +216,21 @@ class SaverWindow(Gtk.ApplicationWindow):
     def _on_spawned(self, _terminal, pid, error, _data) -> None:
         if error is not None:
             self.running = False
+            if self.app.stopping or self.closing or self.cancellable.is_cancelled():
+                return
             print(f"kde-ascii-saver: could not start animation: {error.message}", file=sys.stderr)
             self.app.quit_saver()
         elif pid == -1:
             self.running = False
-            self.app.quit_saver()
+            if not self.app.stopping and not self.closing:
+                self.app.quit_saver()
 
     def _on_child_exited(self, _terminal, status) -> None:
         self.running = False
         if self.app.once:
             self.app.quit_saver()
             return
-        if self.app.stopping:
+        if self.app.stopping or self.closing:
             return
         decision = tte_restart_after(status, self.tte_failures)
         if decision is None:
@@ -292,8 +250,9 @@ class SaverApplication(Gtk.Application):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.windowed = windowed
         self.once = once
-        self.config = load_config()
+        self.config = load_config(CONFIG_DIR / "config.json")
         self.stopping = False
+        self._monitors = None
         # Probed in do_startup after GTK connects a display; fullscreen fallback otherwise.
         self.layer_shell = False
 
@@ -327,19 +286,68 @@ class SaverApplication(Gtk.Application):
             return
 
         display = Gdk.Display.get_default()
-        monitors = display.get_monitors() if display else None
-        count = monitors.get_n_items() if monitors else 0
-        if count:
-            for index in range(count):
-                SaverWindow(self, monitors.get_item(index), False, keyboard_surface=index == 0)
-        else:
-            SaverWindow(self, None, False)
+        self._monitors = display.get_monitors() if display else None
+        if self._monitors is not None:
+            self._monitors.connect("items-changed", self._on_monitors_changed)
+        self._sync_monitor_windows()
+
+    def _on_monitors_changed(self, _model, _position, _removed, _added) -> None:
+        self._sync_monitor_windows()
+
+    def _close_overlay_window(self, window: SaverWindow) -> None:
+        window.closing = True
+        window.cancellable.cancel()
+        window.terminal.feed_child(bytes((3,)))
+        window.destroy()
+
+    def _overlay_windows(self) -> list[SaverWindow]:
+        return [window for window in self.get_windows() if not getattr(window, "windowed", False)]
+
+    def _sync_monitor_windows(self) -> None:
+        if self.stopping or self.windowed:
+            return
+        current = []
+        if self._monitors is not None:
+            current = [self._monitors.get_item(index) for index in range(self._monitors.get_n_items())]
+        alive = set(current)
+        for window in list(self._overlay_windows()):
+            monitor = getattr(window, "monitor", None)
+            if current:
+                if monitor is None or monitor not in alive:
+                    self._close_overlay_window(window)
+            elif monitor is not None:
+                self._close_overlay_window(window)
+        remaining = {window.monitor for window in self._overlay_windows()}
+        if current:
+            for monitor in current:
+                if monitor not in remaining:
+                    SaverWindow(self, monitor, False, keyboard_surface=False)
+            self._refresh_keyboard_surface()
+        elif not self._overlay_windows():
+            SaverWindow(self, None, False, keyboard_surface=True)
+
+    def _refresh_keyboard_surface(self) -> None:
+        if not self.layer_shell or Gtk4LayerShell is None:
+            return
+        primary = None
+        if self._monitors is not None and self._monitors.get_n_items():
+            primary = self._monitors.get_item(0)
+        assigned = False
+        for window in self._overlay_windows():
+            exclusive = not assigned and (window.monitor is primary or primary is None)
+            if exclusive:
+                assigned = True
+            Gtk4LayerShell.set_keyboard_mode(
+                window,
+                Gtk4LayerShell.KeyboardMode.EXCLUSIVE if exclusive else Gtk4LayerShell.KeyboardMode.NONE,
+            )
 
     def quit_saver(self) -> None:
         if self.stopping:
             return
         self.stopping = True
         for window in list(self.get_windows()):
+            window.closing = True
             window.cancellable.cancel()
             window.terminal.feed_child(bytes((3,)))
             window.destroy()

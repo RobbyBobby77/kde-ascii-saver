@@ -18,6 +18,7 @@
 
 #include <csignal>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 namespace {
@@ -28,7 +29,8 @@ void unixSignalHandler(int)
 {
     char byte = 1;
     if (shutdownSockets[0] != -1) {
-        ::write(shutdownSockets[0], &byte, sizeof(byte));
+        const ssize_t written = ::write(shutdownSockets[0], &byte, sizeof(byte));
+        (void)written;
     }
 }
 
@@ -200,6 +202,9 @@ private:
 
     bool screenLocked() const
     {
+        if (m_locked) {
+            return true;
+        }
         auto message = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.ScreenSaver"),
                                                      QStringLiteral("/ScreenSaver"),
                                                      QStringLiteral("org.freedesktop.ScreenSaver"),
@@ -311,7 +316,8 @@ int main(int argc, char *argv[])
                      &application,
                      [&](QSocketDescriptor) {
                          char byte = 0;
-                         ::read(shutdownSockets[1], &byte, sizeof(byte));
+                         const ssize_t bytesRead = ::read(shutdownSockets[1], &byte, sizeof(byte));
+                         (void)bytesRead;
                          watcher.stopSaver();
                          application.quit();
                      });

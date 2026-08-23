@@ -21,5 +21,8 @@ find_package(KF6IdleTime REQUIRED)
 
 add_executable(kde-ascii-saver-watcher watcher.cpp)
 target_link_libraries(kde-ascii-saver-watcher PRIVATE Qt6::Gui Qt6::DBus KF6::IdleTime)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(kde-ascii-saver-watcher PRIVATE -Wall -Wextra)
+endif()
 
 install(TARGETS kde-ascii-saver-watcher RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
