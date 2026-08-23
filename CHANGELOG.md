@@ -13,7 +13,6 @@ All notable changes to this project will be documented here.
 - A single-instance watcher lock and PID-based lifecycle for autostart mode.
 - Unit tests for config merge, config validation, TTE restart backoff, and
   `$EDITOR` argv parsing.
-- Dependabot weekly updates for GitHub Actions.
 
 ### Changed
 
