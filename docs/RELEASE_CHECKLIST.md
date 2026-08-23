@@ -5,6 +5,9 @@ observed in a real Plasma session. A release owner should record the tested
 distribution, Plasma version, session type, monitor arrangement, and results
 in the release pull request or issue.
 
+The current preview results are recorded in
+[Version 0.1.0 acceptance](ACCEPTANCE-0.1.0.md).
+
 ## Repository and documentation
 
 - [ ] `VERSION`, changelog heading, tag, and release title agree.
