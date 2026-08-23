@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and troubleshooting
+    url: https://github.com/RobbyBobby77/kde-ascii-saver/blob/main/SUPPORT.md
+    about: Read the support routes and diagnostic checklist before opening an issue.
+  - name: Report a security vulnerability
+    url: https://github.com/RobbyBobby77/kde-ascii-saver/security/advisories/new
+    about: Privately report a suspected vulnerability; do not open a public issue.

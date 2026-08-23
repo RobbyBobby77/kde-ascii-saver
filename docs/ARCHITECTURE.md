@@ -52,6 +52,12 @@ respawning every 80 ms.
 `config.json` values for `frame_rate`, colors, and `exclude_effects` are
 validated before they reach TTE argv.
 
+The renderer independently subscribes to KScreenLocker's `AboutToLock` and
+`ActiveChanged` signals and queries `GetActive` before showing windows. This
+keeps manually launched surfaces subject to the same lock handoff as
+watcher-launched surfaces. If the renderer cannot monitor the session bus, it
+fails closed instead of displaying an overlay whose lock state it cannot know.
+
 On supported Wayland compositors, GTK4 Layer Shell places each window on the
 overlay layer and anchors it to all four output edges. The renderer probes
 `Gtk4LayerShell.is_supported()` only after `Gtk.Application` startup has
@@ -113,4 +119,6 @@ The project honors `XDG_CONFIG_HOME` and `XDG_DATA_HOME` for configuration and
 application data. Launch wrappers remain under `~/.local/bin`.
 
 See [Distribution support](DISTRIBUTIONS.md) for package names and validation
-levels across Linux families.
+levels across Linux families. Installation and release verification are
+documented separately in [Installation](INSTALLATION.md), and manual Plasma
+coverage is tracked by the [release checklist](RELEASE_CHECKLIST.md).

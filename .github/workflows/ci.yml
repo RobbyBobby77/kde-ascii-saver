@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  workflow_call:
   push:
+    branches:
+      - "**"
   pull_request:
 
 permissions:
@@ -19,17 +22,17 @@ jobs:
             image: fedora:44
             install: |
               dnf install -y \
-                bash cmake desktop-file-utils gcc-c++ git \
+                bash cmake curl desktop-file-utils gcc-c++ git \
                 gtk4 gtk4-layer-shell kf6-kidletime-devel \
-                python3 python3-gobject qt6-qtbase-devel vte291-gtk4
+                python3 python3-gobject python3-pip qt6-qtbase-devel vte291-gtk4
           - name: Debian 13
             image: debian:trixie
             install: |
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                bash build-essential cmake desktop-file-utils git \
+                bash build-essential cmake curl desktop-file-utils git \
                 gir1.2-gtk-4.0 gir1.2-gtk4layershell-1.0 gir1.2-vte-3.91 \
-                libkf6idletime-dev python3 python3-gi qt6-base-dev
+                libkf6idletime-dev python3 python3-gi python3-venv qt6-base-dev
     container: ${{ matrix.image }}
 
     steps:
@@ -46,7 +49,8 @@ jobs:
           python3 -m unittest discover -s tests -t . -v
           bash -n install.sh uninstall.sh bin/kde-ascii-saver \
             bin/kde-ascii-saverctl bin/kde-ascii-saver-watcher \
-            scripts/dependency-hint.sh
+            install-online.sh scripts/build-release.sh \
+            scripts/dependency-hint.sh tests/test_installers.sh
           python3 -m json.tool config/config.json >/dev/null
           sed 's|@EXEC@|/home/test/.local/bin/kde-ascii-saver|' \
             io.github.kde_ascii_saver.KdeAsciiSaver.desktop.in \
@@ -56,6 +60,16 @@ jobs:
             io.github.kde_ascii_saver.Watcher.desktop.in \
             >/tmp/kde-ascii-saver-watcher.desktop
           desktop-file-validate /tmp/kde-ascii-saver-watcher.desktop
+
+      - name: Validate installer and release packaging
+        shell: bash
+        run: |
+          tests/test_installers.sh
+          release_dir=$(mktemp -d)
+          ./scripts/build-release.sh "$release_dir"
+          version=$(head -n 1 VERSION)
+          (cd "$release_dir" && sha256sum --check "kde-ascii-saver-$version.tar.gz.sha256")
+          tar -tzf "$release_dir/kde-ascii-saver-$version.tar.gz" >/dev/null
 
       - name: Validate GObject introspection dependencies
         run: |
@@ -71,6 +85,14 @@ jobs:
           assert Gtk4LayerShell.Layer.OVERLAY is not None
           assert Vte.PtyFlags.DEFAULT is not None
           PY
+
+      - name: Validate pinned TerminalTextEffects runtime
+        run: |
+          python3 -m venv --system-site-packages /tmp/kde-ascii-saver-ci-venv
+          /tmp/kde-ascii-saver-ci-venv/bin/python -m pip install \
+            --quiet --disable-pip-version-check --require-hashes \
+            -r requirements.txt
+          /tmp/kde-ascii-saver-ci-venv/bin/tte --version
 
       - name: Build native Plasma watcher
         run: |
