@@ -39,7 +39,7 @@ from helpers import (  # noqa: E402
 )
 
 
-APP_ID = "io.github.kde_ascii_saver.KdeAsciiSaver"
+APP_ID = "io.github.robbybobby77.KdeAsciiSaver.Renderer"
 VERSION = read_version()
 
 

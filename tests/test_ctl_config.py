@@ -117,6 +117,48 @@ class EditorCommandTests(unittest.TestCase):
         self.assertEqual(run.call_args[0][0][0], "/usr/bin/vim")
 
 
+class StartCommandTests(unittest.TestCase):
+    def test_start_waits_until_renderer_claims_its_pid(self) -> None:
+        process = mock.Mock()
+        process.poll.return_value = None
+        output = io.StringIO()
+        with mock.patch("ctl.current_pid", side_effect=[None, 42]), mock.patch(
+            "ctl.subprocess.Popen", return_value=process
+        ) as popen, mock.patch("sys.stdout", output):
+            self.assertTrue(ctl.command_start(windowed=True))
+        self.assertEqual(popen.call_args.args[0][-1], "--windowed")
+        self.assertIn("Started", output.getvalue())
+
+    def test_start_reports_early_renderer_failure(self) -> None:
+        process = mock.Mock()
+        process.poll.return_value = 1
+
+        def start_process(*_args, **kwargs):
+            kwargs["stderr"].write(b"could not query KScreenLocker\n")
+            kwargs["stderr"].flush()
+            return process
+
+        output = io.StringIO()
+        with mock.patch("ctl.current_pid", return_value=None), mock.patch(
+            "ctl.subprocess.Popen", side_effect=start_process
+        ), mock.patch("sys.stdout", output):
+            self.assertFalse(ctl.command_start())
+        self.assertIn("could not query KScreenLocker", output.getvalue())
+
+    def test_start_fails_when_renderer_never_claims_pid(self) -> None:
+        process = mock.Mock()
+        process.poll.return_value = None
+        output = io.StringIO()
+        with mock.patch("ctl.current_pid", return_value=None), mock.patch(
+            "ctl.subprocess.Popen", return_value=process
+        ), mock.patch("ctl.time.monotonic", side_effect=[0.0, 4.0]), mock.patch(
+            "sys.stdout", output
+        ):
+            self.assertFalse(ctl.command_start())
+        process.terminate.assert_called_once_with()
+        self.assertIn("did not finish initializing", output.getvalue())
+
+
 class StopCommandTests(unittest.TestCase):
     def test_stop_uses_identity_checked_signal(self) -> None:
         output = io.StringIO()

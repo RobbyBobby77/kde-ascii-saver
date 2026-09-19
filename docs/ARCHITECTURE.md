@@ -75,10 +75,11 @@ sibling rather than extracted as a third package.
 
 ### Control utility
 
-`ctl.py` manages manual launch, status, artwork editing, the delay, automatic
-activation, and removal. It writes configuration atomically to avoid leaving a
-partial JSON document. An unreadable `config.json` is left untouched rather than
-replaced with a one-key file.
+`ctl.py` manages manual launch, status, diagnostics, artwork editing, the delay,
+automatic activation, and removal. It writes configuration atomically to avoid
+leaving a partial JSON document. An unreadable `config.json` is left untouched
+rather than replaced with a one-key file. `settings.py` provides the GTK 4
+control panel and delegates process actions to the same controller.
 
 ### Session integration
 
@@ -107,12 +108,13 @@ KScreenLocker AboutToLock/ActiveChanged ────────────┘
 ~/.local/bin/kde-ascii-saver
 ~/.local/bin/kde-ascii-saverctl
 ~/.local/bin/kde-ascii-saver-watcher
+~/.local/bin/kde-ascii-saver-settings
 ~/.local/share/kde-ascii-saver/
-~/.local/share/applications/io.github.kde_ascii_saver.KdeAsciiSaver.desktop
+~/.local/share/applications/io.github.robbybobby77.KdeAsciiSaver.desktop
 ~/.config/kde-ascii-saver/config.json
 ~/.config/kde-ascii-saver/logo.txt
 ~/.config/systemd/user/kde-ascii-saver.service        # systemd path
-~/.config/autostart/kde-ascii-saver-watcher.desktop  # non-systemd path
+~/.config/autostart/io.github.robbybobby77.KdeAsciiSaver.Watcher.desktop
 ```
 
 The project honors `XDG_CONFIG_HOME` and `XDG_DATA_HOME` for configuration and

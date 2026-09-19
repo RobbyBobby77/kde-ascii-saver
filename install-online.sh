@@ -16,6 +16,9 @@ its user-local installer. With no options, the latest stable release is used.
 
 Options:
   --version VERSION   Install a specific release (for example 0.1.0 or v0.1.0)
+  --yes               Install missing system dependencies without confirmation
+  --no-install-deps   Only print dependency guidance when packages are missing
+  --check             Check dependencies without installing the application
   --no-start          Pass --no-start to the downloaded installer
   --non-interactive   Pass --non-interactive to the downloaded installer
   -h, --help          Show this help
@@ -38,7 +41,7 @@ while (($#)); do
             requested_version=$2
             shift
             ;;
-        --no-start|--non-interactive)
+        --yes|--no-install-deps|--check|--no-start|--non-interactive)
             installer_args+=("$1")
             ;;
         --)

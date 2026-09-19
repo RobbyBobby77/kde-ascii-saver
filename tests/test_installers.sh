@@ -3,7 +3,12 @@ set -euo pipefail
 
 project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 test_dir=$(mktemp -d "${TMPDIR:-/tmp}/kde-ascii-saver-installer-test.XXXXXX")
+delayed_watcher_pid=
 cleanup() {
+    if [[ -n "$delayed_watcher_pid" ]]; then
+        kill -KILL "$delayed_watcher_pid" 2>/dev/null || true
+        wait "$delayed_watcher_pid" 2>/dev/null || true
+    fi
     rm -rf -- "$test_dir"
 }
 trap cleanup EXIT INT TERM HUP
@@ -44,10 +49,10 @@ cp -- "$specific_dir/kde-ascii-saver-$version.tar.gz" "$latest_dir/kde-ascii-sav
 
 TEST_INSTALL_MARKER="$marker" TEST_INSTALL_ARGS="$args_file" \
 KDE_ASCII_SAVER_RELEASE_BASE_URL="file://$release_root" TMPDIR="$test_dir/download-tmp" \
-    "$project_dir/install-online.sh" --version "v$version" --no-start --non-interactive
+    "$project_dir/install-online.sh" --version "v$version" --yes --no-start --non-interactive
 [[ -f "$marker" ]] || fail 'verified versioned archive did not run its installer'
 mapfile -t forwarded_args <"$args_file"
-[[ "${forwarded_args[*]}" == '--no-start --non-interactive' ]] || \
+[[ "${forwarded_args[*]}" == '--yes --no-start --non-interactive' ]] || \
     fail 'bootstrap did not forward installer options'
 if find "$test_dir/download-tmp" -mindepth 1 -print -quit | grep -q .; then
     fail 'bootstrap left its temporary download directory behind'
@@ -122,7 +127,14 @@ if [[ "${TEST_SED_FAIL:-0}" == 1 ]]; then
 fi
 exec /usr/bin/sed "$@"
 EOF
-chmod 0755 "$fake_bin/cmake" "$fake_bin/python3" "$fake_bin/sed"
+cat >"$fake_bin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == --user && "${2:-}" == show-environment ]]; then
+    exit 1
+fi
+exit 0
+EOF
+chmod 0755 "$fake_bin/cmake" "$fake_bin/python3" "$fake_bin/sed" "$fake_bin/systemctl"
 
 printf 'old application\n' >"$install_data/kde-ascii-saver/old-marker"
 printf 'custom art\n' >"$install_config/kde-ascii-saver/logo.txt"
@@ -145,10 +157,35 @@ fi
 [[ $(<"$install_home/.local/bin/kde-ascii-saver") == 'old launcher' ]] || \
     fail 'failed upgrade did not restore managed launcher'
 
+# A replacement XDG watcher that exits before claiming its PID must make the
+# install fail and roll back instead of reporting a successful upgrade.
+mkdir -p "$test_dir/no-systemd-runtime"
+session_install_env=(
+    HOME="$install_home"
+    XDG_DATA_HOME="$install_data"
+    XDG_CONFIG_HOME="$install_config"
+    XDG_RUNTIME_DIR="$test_dir/no-systemd-runtime"
+    TEST_CMAKE_STATE="$test_dir/cmake-prefix"
+    PATH="$fake_bin:$PATH"
+)
+if env "${session_install_env[@]}" "$project_dir/install.sh" >/dev/null 2>&1; then
+    fail 'installer accepted an XDG watcher that exited during startup'
+fi
+[[ -f "$install_data/kde-ascii-saver/old-marker" ]] || \
+    fail 'watcher startup failure did not restore the old application'
+[[ $(<"$install_home/.local/bin/kde-ascii-saver") == 'old launcher' ]] || \
+    fail 'watcher startup failure did not restore the old launcher'
+
 env "${install_env[@]}" "$project_dir/install.sh" >/dev/null
 [[ ! -e "$install_data/kde-ascii-saver/old-marker" ]] || fail 'successful upgrade kept old app payload'
 [[ -x "$install_data/kde-ascii-saver/uninstall.sh" ]] || \
     fail 'successful install did not include the hardened uninstaller'
+[[ -x "$install_home/.local/bin/kde-ascii-saver-settings" ]] || \
+    fail 'successful install did not include the settings launcher'
+[[ -f "$install_data/applications/io.github.robbybobby77.KdeAsciiSaver.desktop" ]] || \
+    fail 'successful install did not include the control-panel desktop entry'
+[[ -f "$install_data/metainfo/io.github.robbybobby77.KdeAsciiSaver.metainfo.xml" ]] || \
+    fail 'successful install did not include AppStream metadata'
 [[ $(<"$install_config/kde-ascii-saver/logo.txt") == 'custom art' ]] || \
     fail 'upgrade overwrote custom art'
 [[ $(<"$install_config/kde-ascii-saver/config.json") == '{"idle_delay": 777}' ]] || \
@@ -159,21 +196,50 @@ grep -q 'python" -m terminaltexteffects' "$install_data/kde-ascii-saver/venv/bin
 # A second successful run covers the normal idempotent-upgrade path.
 env "${install_env[@]}" "$project_dir/install.sh" >/dev/null
 
+# The uninstaller must wait for a non-systemd watcher to release its executable
+# before removing the application directory. This reproduces the same lock race
+# that the upgrader must avoid before starting a replacement watcher.
+wait_home="$test_dir/wait-home"
+wait_data="$test_dir/wait-data"
+wait_config="$test_dir/wait-config"
+wait_runtime="$test_dir/wait-runtime"
+mkdir -p "$wait_home/.local/bin" "$wait_data/kde-ascii-saver" \
+    "$wait_config/kde-ascii-saver" "$wait_runtime"
+cp -- /bin/bash "$wait_data/kde-ascii-saver/kde-ascii-saver-watcher"
+"$wait_data/kde-ascii-saver/kde-ascii-saver-watcher" -c \
+    'trap "sleep 0.4; exit 0" TERM; while :; do sleep 1; done' &
+delayed_watcher_pid=$!
+printf '%s\n' "$delayed_watcher_pid" \
+    >"$wait_runtime/kde-ascii-saver-watcher-$(id -u).pid"
+HOME="$wait_home" XDG_DATA_HOME="$wait_data" XDG_CONFIG_HOME="$wait_config" \
+XDG_RUNTIME_DIR="$wait_runtime" PATH="$fake_bin:$PATH" "$project_dir/uninstall.sh" >/dev/null
+if kill -0 "$delayed_watcher_pid" 2>/dev/null; then
+    fail 'uninstaller returned before the XDG watcher exited'
+fi
+wait "$delayed_watcher_pid" 2>/dev/null || true
+delayed_watcher_pid=
+
 isolated_home="$test_dir/home"
 isolated_data="$test_dir/data"
 isolated_config="$test_dir/config"
 mkdir -p "$isolated_home/.local/bin" "$isolated_data/kde-ascii-saver" \
-    "$isolated_data/applications" "$isolated_config/kde-ascii-saver" \
+    "$isolated_data/applications" "$isolated_data/metainfo" \
+    "$isolated_data/icons/hicolor/scalable/apps" "$isolated_config/kde-ascii-saver" \
     "$isolated_config/systemd/user" "$isolated_config/autostart"
 printf 'custom art\n' >"$isolated_config/kde-ascii-saver/logo.txt"
 printf '{}\n' >"$isolated_config/kde-ascii-saver/config.json"
 touch "$isolated_data/kde-ascii-saver/app.py" \
     "$isolated_data/applications/io.github.kde_ascii_saver.KdeAsciiSaver.desktop" \
+    "$isolated_data/applications/io.github.robbybobby77.KdeAsciiSaver.desktop" \
+    "$isolated_data/metainfo/io.github.robbybobby77.KdeAsciiSaver.metainfo.xml" \
+    "$isolated_data/icons/hicolor/scalable/apps/io.github.robbybobby77.KdeAsciiSaver.svg" \
     "$isolated_home/.local/bin/kde-ascii-saver" \
     "$isolated_home/.local/bin/kde-ascii-saverctl" \
     "$isolated_home/.local/bin/kde-ascii-saver-watcher" \
+    "$isolated_home/.local/bin/kde-ascii-saver-settings" \
     "$isolated_config/systemd/user/kde-ascii-saver.service" \
     "$isolated_config/autostart/kde-ascii-saver-watcher.desktop"
+touch "$isolated_config/autostart/io.github.robbybobby77.KdeAsciiSaver.Watcher.desktop"
 
 HOME="$isolated_home" XDG_DATA_HOME="$isolated_data" XDG_CONFIG_HOME="$isolated_config" \
 KDE_ASCII_SAVER_NO_SESSION=1 "$project_dir/uninstall.sh"

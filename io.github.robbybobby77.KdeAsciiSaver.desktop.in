@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=KDE ASCII Saver
+Comment=Configure and control the animated Plasma ASCII idle screen
+Exec=@SETTINGS@
+Icon=io.github.robbybobby77.KdeAsciiSaver
+Terminal=false
+OnlyShowIn=KDE;
+Categories=Settings;
+Keywords=screensaver;ascii;terminal;animation;plasma;
+StartupNotify=true

@@ -46,6 +46,24 @@ case "${KDE_ASCII_SAVER_NO_SESSION:-0}" in
     1|true|TRUE|yes|YES) manage_session=false ;;
 esac
 
+wait_for_watcher_exit() {
+    local watcher_pid=$1
+    local expected_exe=$2
+    local current_exe=
+    local attempt
+    for ((attempt=0; attempt<100; attempt++)); do
+        if [[ ! -e "/proc/$watcher_pid/exe" ]]; then
+            return 0
+        fi
+        current_exe=$(readlink -f -- "/proc/$watcher_pid/exe" 2>/dev/null || true)
+        if [[ -z "$current_exe" || "$current_exe" != "$expected_exe" ]]; then
+            return 0
+        fi
+        sleep 0.05
+    done
+    return 1
+}
+
 stop_watcher_pid_file() {
     local pid_file=$1
     local watcher_pid=
@@ -60,6 +78,10 @@ stop_watcher_pid_file() {
             if [[ -n "$watcher_exe" && "$watcher_exe" == "$expected_exe" ]]; then
                 [[ $(readlink -f -- "/proc/$watcher_pid/exe" 2>/dev/null || true) == "$expected_exe" ]] && \
                     kill "$watcher_pid" 2>/dev/null || true
+                if ! wait_for_watcher_exit "$watcher_pid" "$expected_exe"; then
+                    printf 'The idle watcher did not stop within five seconds.\n' >&2
+                    return 1
+                fi
             fi
         fi
         rm -f -- "$pid_file"
@@ -92,9 +114,13 @@ elif [[ -e "$app_dir" || -L "$app_dir" ]]; then
     remove_complete=false
 fi
 rm -f -- "$data_home/applications/io.github.kde_ascii_saver.KdeAsciiSaver.desktop" \
+    "$data_home/applications/io.github.robbybobby77.KdeAsciiSaver.desktop" \
+    "$data_home/metainfo/io.github.robbybobby77.KdeAsciiSaver.metainfo.xml" \
+    "$data_home/icons/hicolor/scalable/apps/io.github.robbybobby77.KdeAsciiSaver.svg" \
     "$bin_dir/kde-ascii-saver" "$bin_dir/kde-ascii-saverctl" \
-    "$bin_dir/kde-ascii-saver-watcher" \
+    "$bin_dir/kde-ascii-saver-watcher" "$bin_dir/kde-ascii-saver-settings" \
     "$config_home/systemd/user/kde-ascii-saver.service" \
+    "$config_home/autostart/io.github.robbybobby77.KdeAsciiSaver.Watcher.desktop" \
     "$config_home/autostart/kde-ascii-saver-watcher.desktop"
 
 update-desktop-database "$data_home/applications" 2>/dev/null || true

@@ -61,7 +61,10 @@ The current preview results are recorded in
 - [ ] Test the systemd user-service install path.
 - [ ] Test the XDG session-autostart fallback on a non-systemd user session.
 - [ ] Reinstalling and upgrading do not create duplicate watchers.
-- [ ] `disable`, `enable`, `delay`, `edit`, and `prefs` behave as documented.
+- [ ] The control panel saves settings and its start, preview, stop, artwork,
+      config, and diagnostics actions behave as documented.
+- [ ] `disable`, `enable`, `delay`, `edit`, `prefs`, `config`, and `doctor`
+      behave as documented.
 - [ ] Upgrade preserves modified `config.json` and `logo.txt`.
 - [ ] Uninstall stops running processes and removes installed program files.
 - [ ] Uninstall preserves modified `config.json` and `logo.txt`.

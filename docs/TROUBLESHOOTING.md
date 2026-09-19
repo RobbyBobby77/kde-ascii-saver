@@ -7,6 +7,7 @@ Run these commands in a terminal inside the affected Plasma session:
 ```sh
 kde-ascii-saverctl --version
 kde-ascii-saverctl status
+kde-ascii-saverctl doctor
 printf 'session=%s runtime=%s\n' "${XDG_SESSION_TYPE:-unset}" "${XDG_RUNTIME_DIR:-unset}"
 ```
 
@@ -41,7 +42,7 @@ On a system without a systemd user manager, status should report XDG session
 autostart. Confirm that this file exists:
 
 ```sh
-ls "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/kde-ascii-saver-watcher.desktop"
+ls "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/io.github.robbybobby77.KdeAsciiSaver.Watcher.desktop"
 ```
 
 Log out and back in after repairing a missing autostart entry by rerunning the

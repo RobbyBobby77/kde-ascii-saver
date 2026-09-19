@@ -21,6 +21,9 @@ class ScreenLockSignalTests(unittest.TestCase):
     def setUp(self) -> None:
         self.application = app.SaverApplication(windowed=False, once=False)
 
+    def test_renderer_uses_project_controlled_application_id(self) -> None:
+        self.assertEqual(app.APP_ID, "io.github.robbybobby77.KdeAsciiSaver.Renderer")
+
     def test_subscribes_to_both_lock_signals_before_querying_state(self) -> None:
         bus = mock.Mock()
         bus.signal_subscribe.side_effect = [11, 12]

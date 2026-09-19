@@ -47,7 +47,7 @@ def read_version(here: Path | None = None) -> str:
     return version or FALLBACK_VERSION
 
 
-def _valid_color(value: object) -> bool:
+def valid_color(value: object) -> bool:
     """Return whether *value* works in both GDK and TTE.
 
     TTE accepts six-digit RGB values while GDK expects the leading ``#``.
@@ -83,7 +83,7 @@ def _apply_config(config: dict, loaded: dict, origin: Path) -> dict:
         _warn(f"{origin}: ignoring invalid font {font!r}")
 
     background = loaded.get("background", config["background"])
-    if _valid_color(background):
+    if valid_color(background):
         config["background"] = str(background).strip()
     elif "background" in loaded:
         _warn(f"{origin}: ignoring invalid background color {background!r}")

@@ -58,11 +58,11 @@ Run the checks relevant to the change; before opening a code pull request, run
 the full local set:
 
 ```sh
-python3 -m py_compile app.py ctl.py helpers.py
+python3 -m py_compile app.py ctl.py helpers.py settings.py
 python3 -m unittest discover -s tests -t . -v
 bash -n install.sh install-online.sh uninstall.sh bin/kde-ascii-saver \
   bin/kde-ascii-saverctl bin/kde-ascii-saver-watcher \
-  scripts/dependency-hint.sh
+  bin/kde-ascii-saver-settings scripts/dependency-hint.sh
 python3 -m json.tool config/config.json >/dev/null
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel

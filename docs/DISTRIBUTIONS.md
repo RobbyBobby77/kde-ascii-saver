@@ -7,10 +7,11 @@ KF6 KIdleTime, Python 3, PyGObject, GTK 4, and the GTK4 build of VTE
 Plasma Wayland but is not required; ordinary fullscreen windows are the
 fallback.
 
-The installer never runs `sudo` or invokes a system package manager. Run the
-matching command yourself, review the packages, and then run `./install.sh`.
-`./scripts/dependency-hint.sh` prints the appropriate known command based on
-`/etc/os-release`.
+When dependencies are missing, the interactive installer shows the matching
+command and asks before invoking the system package manager through `sudo`.
+Pass `--no-install-deps` to print the command without running it.
+`./scripts/dependency-hint.sh` also prints the appropriate known command based
+on `/etc/os-release`.
 
 ## Known package commands
 

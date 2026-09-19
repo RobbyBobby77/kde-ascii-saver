@@ -11,8 +11,11 @@ coverage on Plasma Wayland.
 The online bootstrap itself requires Bash, `curl`, Python 3, and either
 `sha256sum` or `shasum`.
 
-The installer is user-local. It does not invoke `sudo` or a system package
-manager. See [Distribution support](DISTRIBUTIONS.md) for exact package names.
+The application installation is user-local. When dependencies are missing, the
+interactive installer displays the native package-manager command and asks
+before invoking it with `sudo`. Pass `--no-install-deps` to keep dependency
+installation fully manual. See [Distribution support](DISTRIBUTIONS.md) for
+exact package names.
 
 ## Recommended online install
 
@@ -42,8 +45,10 @@ bootstrap:
 KDE_ASCII_SAVER_VERSION=v0.1.0 bash install-online.sh
 ```
 
-The bootstrap also accepts `--version v0.1.0`. Run
-`bash install-online.sh --help` for non-interactive and no-start options.
+The bootstrap also accepts `--version v0.1.0`. Use `--yes` for an unattended
+dependency install, `--no-install-deps` to print guidance only, `--check` to
+validate dependencies, and `--no-start` to leave session processes untouched.
+Run `bash install-online.sh --help` for the complete option list.
 
 ## Install from a Git clone
 
@@ -56,8 +61,8 @@ cd kde-ascii-saver
 ./install.sh
 ```
 
-The dependency helper only prints a package-manager command. Run that command
-yourself if dependencies are missing, then rerun `./install.sh`.
+The dependency helper only previews the package-manager command. If anything
+is missing, `./install.sh` shows the same command and offers to run it.
 
 To validate the required commands and GTK/VTE bindings without installing:
 
@@ -73,15 +78,19 @@ By default, installation creates:
 ~/.local/bin/kde-ascii-saver
 ~/.local/bin/kde-ascii-saverctl
 ~/.local/bin/kde-ascii-saver-watcher
+~/.local/bin/kde-ascii-saver-settings
 ~/.local/share/kde-ascii-saver/
-~/.local/share/applications/io.github.kde_ascii_saver.KdeAsciiSaver.desktop
+~/.local/share/applications/io.github.robbybobby77.KdeAsciiSaver.desktop
+~/.local/share/metainfo/io.github.robbybobby77.KdeAsciiSaver.metainfo.xml
+~/.local/share/icons/hicolor/scalable/apps/io.github.robbybobby77.KdeAsciiSaver.svg
 ~/.config/kde-ascii-saver/config.json
 ~/.config/kde-ascii-saver/logo.txt
 ~/.config/systemd/user/kde-ascii-saver.service
 ```
 
 On systems without a working systemd user manager, the last file is replaced
-by `~/.config/autostart/kde-ascii-saver-watcher.desktop`. `XDG_CONFIG_HOME` and
+by `~/.config/autostart/io.github.robbybobby77.KdeAsciiSaver.Watcher.desktop`.
+`XDG_CONFIG_HOME` and
 `XDG_DATA_HOME` override the corresponding config and data roots. Command
 wrappers remain in `~/.local/bin`.
 
@@ -95,6 +104,8 @@ Provide a real keyboard or pointer event once after installation, then check:
 ```sh
 kde-ascii-saverctl status
 kde-ascii-saverctl preview
+kde-ascii-saverctl prefs
+kde-ascii-saverctl doctor
 ```
 
 The first input is intentional: it arms the watcher without immediately
@@ -156,7 +167,6 @@ That last command is irreversible unless the directory is backed up.
 
 Download a release archive and its checksum on a connected computer, verify
 the checksum there, and transfer both the verified archive and checksum to the
-Plasma system. Extract the archive and run `./install.sh`. System dependencies
-and the Python package listed in `requirements.txt` must already be available;
-the normal installer may otherwise need network access to populate its isolated
-virtual environment.
+Plasma system. Published archives include the pinned TerminalTextEffects wheel,
+so only distribution system dependencies must already be available. Extract
+the archive and run `./install.sh --no-install-deps`.

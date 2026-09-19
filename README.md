@@ -34,9 +34,9 @@ curl -fsSL https://raw.githubusercontent.com/RobbyBobby77/kde-ascii-saver/main/i
 ```
 
 The bootstrap downloads the latest stable tagged release, verifies its SHA-256
-checksum, and runs the bundled user-local installer. The installer never uses
-`sudo`; if system packages are missing, it prints the command for you to review
-and run.
+checksum, and runs the bundled user-local installer. If system packages are
+missing, it shows the distribution-specific command and asks before using
+`sudo` to install them. Application files are always installed without `sudo`.
 
 If you prefer to inspect the bootstrap before running it:
 
@@ -60,6 +60,7 @@ dependencies, upgrades, and uninstall instructions.
   detection.
 - Gets out of the way when KScreenLocker starts locking.
 - Provides a preview, manual launch, and a command-line control utility.
+- Includes a GTK 4 control panel for status, actions, preferences, and diagnostics.
 - Preserves user configuration and artwork across upgrades and uninstall.
 
 ## Requirements and status
@@ -86,11 +87,13 @@ kde-ascii-saverctl start        # show the fullscreen saver now
 kde-ascii-saverctl preview      # open a decorated preview window
 kde-ascii-saverctl stop         # close it
 kde-ascii-saverctl edit         # edit the ASCII artwork
-kde-ascii-saverctl prefs        # open config.json
+kde-ascii-saverctl prefs        # open the graphical control panel
+kde-ascii-saverctl config       # open config.json directly
 kde-ascii-saverctl delay 180    # set the idle delay in seconds
 kde-ascii-saverctl disable      # pause automatic launch
 kde-ascii-saverctl enable
 kde-ascii-saverctl status
+kde-ascii-saverctl doctor       # check the complete installation
 ```
 
 If the command is not found, add the user binary directory to your shell path:
@@ -102,6 +105,10 @@ export PATH="$HOME/.local/bin:$PATH"
 The default idle delay is 120 seconds. The watcher waits for the next real
 input event before arming its first timeout, so installing or restarting it on
 an already-idle desktop does not suddenly cover the screen.
+
+The control panel is also available as **KDE ASCII Saver** in Plasma's
+application launcher. It can start, preview, and stop the saver; change the
+idle delay and visual settings; open the artwork; and run installation checks.
 
 ## Customize it
 

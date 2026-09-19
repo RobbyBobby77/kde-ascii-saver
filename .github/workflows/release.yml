@@ -34,8 +34,13 @@ jobs:
             exit 1
           fi
 
+      - name: Download the pinned offline runtime wheel
+        run: |
+          python3 -m pip download --only-binary=:all: --no-deps --require-hashes \
+            -r requirements.txt --dest vendor
+
       - name: Build archives and checksums
-        run: ./scripts/build-release.sh dist
+        run: KDE_ASCII_SAVER_VENDOR_DIR=vendor ./scripts/build-release.sh dist
 
       - name: Validate release contents
         shell: bash
@@ -50,7 +55,13 @@ jobs:
           tar -tzf "dist/kde-ascii-saver-$version.tar.gz" >archive-contents.txt
           grep -qx "kde-ascii-saver-$version/install-online.sh" archive-contents.txt
           grep -qx "kde-ascii-saver-$version/install.sh" archive-contents.txt
+          grep -qx "kde-ascii-saver-$version/settings.py" archive-contents.txt
           grep -qx "kde-ascii-saver-$version/uninstall.sh" archive-contents.txt
+          grep -qx \
+            "kde-ascii-saver-$version/io.github.robbybobby77.KdeAsciiSaver.metainfo.xml" \
+            archive-contents.txt
+          grep -Eq "^kde-ascii-saver-$version/vendor/terminaltexteffects-.*\\.whl$" \
+            archive-contents.txt
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4

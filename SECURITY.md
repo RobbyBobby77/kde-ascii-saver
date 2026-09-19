@@ -50,14 +50,17 @@ project is not itself a lock screen.
 
 ## Installation, network, and privacy
 
-The user-local installer writes to the current user's XDG data and config
+The application installer writes to the current user's XDG data and config
 locations, `~/.local/bin`, and either the systemd user-unit or XDG autostart
-directory. It does not request root access or change system lock settings.
+directory. When system dependencies are missing, its guided mode shows the
+native package-manager command and asks before invoking that command with
+`sudo`; application files are never installed as root. It does not change
+system lock settings.
 
 The recommended bootstrap downloads a tagged release and checksum from GitHub
 before running the bundled installer. The installer creates an isolated Python
-environment and obtains the version-pinned, hash-verified runtime dependency
-from PyPI.
+environment. Published archives include the version-pinned, hash-verified
+runtime wheel; source checkouts obtain the same pinned dependency from PyPI.
 Review `install-online.sh`, `install.sh`, and `requirements.txt` when evaluating
 the supply-chain boundary. A checksum detects a damaged or mismatched archive;
 the GitHub repository and its release assets remain trusted inputs.

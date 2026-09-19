@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.robbybobby77.KdeAsciiSaver</id>
+  <name>KDE ASCII Saver</name>
+  <summary>Animated ASCII idle screen for KDE Plasma 6</summary>
+  <developer id="io.github.robbybobby77">
+    <name>RobbyBobby77</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      KDE ASCII Saver displays custom artwork with randomized terminal text
+      animations when a Plasma session becomes idle. It supports multiple
+      monitors, Wayland and X11, and hands control to KScreenLocker whenever
+      the session locks.
+    </p>
+    <p>
+      The control panel manages automatic activation, idle delay, typography,
+      colors, frame rate, artwork, previews, and installation diagnostics.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.robbybobby77.KdeAsciiSaver.desktop</launchable>
+  <url type="homepage">https://github.com/RobbyBobby77/kde-ascii-saver</url>
+  <url type="bugtracker">https://github.com/RobbyBobby77/kde-ascii-saver/issues</url>
+  <provides>
+    <binary>kde-ascii-saver-settings</binary>
+  </provides>
+  <categories>
+    <category>Settings</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-08-30"/>
+  </releases>
+</component>

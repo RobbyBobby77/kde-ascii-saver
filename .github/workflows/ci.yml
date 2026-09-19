@@ -23,7 +23,7 @@ jobs:
             image: fedora:44
             install: |
               dnf install -y \
-                bash cmake curl desktop-file-utils gcc-c++ git \
+                appstream bash cmake curl desktop-file-utils gcc-c++ git \
                 gtk4 gtk4-layer-shell kf6-kidletime-devel \
                 python3 python3-gobject python3-pip qt6-qtbase-devel vte291-gtk4
           - name: Debian 13
@@ -31,7 +31,7 @@ jobs:
             install: |
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                bash build-essential cmake curl desktop-file-utils git \
+                appstream bash build-essential cmake curl desktop-file-utils git \
                 gir1.2-gtk-4.0 gir1.2-gtk4layershell-1.0 gir1.2-vte-3.91 \
                 libkf6idletime-dev python3 python3-gi python3-venv qt6-base-dev
     container: ${{ matrix.image }}
@@ -49,21 +49,24 @@ jobs:
       - name: Validate Python, shell, JSON, and desktop metadata
         shell: bash
         run: |
-          python3 -m py_compile app.py ctl.py helpers.py
+          python3 -m py_compile app.py ctl.py helpers.py settings.py
           python3 -m unittest discover -s tests -t . -v
           bash -n install.sh uninstall.sh bin/kde-ascii-saver \
             bin/kde-ascii-saverctl bin/kde-ascii-saver-watcher \
+            bin/kde-ascii-saver-settings \
             install-online.sh scripts/build-release.sh \
             scripts/dependency-hint.sh tests/test_installers.sh
           python3 -m json.tool config/config.json >/dev/null
-          sed 's|@EXEC@|/home/test/.local/bin/kde-ascii-saver|' \
-            io.github.kde_ascii_saver.KdeAsciiSaver.desktop.in \
+          sed 's|@SETTINGS@|/home/test/.local/bin/kde-ascii-saver-settings|' \
+            io.github.robbybobby77.KdeAsciiSaver.desktop.in \
             >/tmp/kde-ascii-saver.desktop
           desktop-file-validate /tmp/kde-ascii-saver.desktop
           sed 's|@WATCHER@|/home/test/.local/bin/kde-ascii-saver-watcher|' \
-            io.github.kde_ascii_saver.Watcher.desktop.in \
+            io.github.robbybobby77.KdeAsciiSaver.Watcher.desktop.in \
             >/tmp/kde-ascii-saver-watcher.desktop
           desktop-file-validate /tmp/kde-ascii-saver-watcher.desktop
+          appstreamcli validate --no-net \
+            io.github.robbybobby77.KdeAsciiSaver.metainfo.xml
 
       - name: Validate installer and release packaging
         shell: bash
