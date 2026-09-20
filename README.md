@@ -71,7 +71,7 @@ openSUSE package commands are documented in the
 [distribution guide](docs/DISTRIBUTIONS.md). GTK4 Layer Shell is recommended
 on Wayland but is optional.
 
-Version `0.1.0` is an initial preview. CI builds the watcher and validates the
+Version `0.2.0` remains a preview. CI builds the watcher and validates the
 renderer dependencies on Fedora and Debian. A complete, recorded acceptance
 pass on real Plasma 6 Wayland and X11 hardware is still required before this
 project should be described as stable; see the

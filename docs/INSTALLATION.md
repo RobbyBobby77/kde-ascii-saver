@@ -42,10 +42,10 @@ To install or roll back to a specific published release with the reviewed
 bootstrap:
 
 ```sh
-KDE_ASCII_SAVER_VERSION=v0.1.0 bash install-online.sh
+KDE_ASCII_SAVER_VERSION=v0.2.0 bash install-online.sh
 ```
 
-The bootstrap also accepts `--version v0.1.0`. Use `--yes` for an unattended
+The bootstrap also accepts `--version v0.2.0`. Use `--yes` for an unattended
 dependency install, `--no-install-deps` to print guidance only, `--check` to
 validate dependencies, and `--no-start` to leave session processes untouched.
 Run `bash install-online.sh --help` for the complete option list.

@@ -86,6 +86,7 @@ jobs:
             gh release create "$GITHUB_REF_NAME" dist/* \
               --verify-tag \
               --title "KDE ASCII Saver $GITHUB_REF_NAME" \
+              --notes "This remains a preview release. The automated suite and a Plasma Wayland single-display installation pass; multi-monitor, mixed-scale, hotplug, and Plasma X11 acceptance remain open in the [release checklist](https://github.com/RobbyBobby77/kde-ascii-saver/blob/v0.2.0/docs/RELEASE_CHECKLIST.md)." \
               --generate-notes \
               "${release_kind[@]}"
           fi

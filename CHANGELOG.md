@@ -4,6 +4,8 @@ All notable changes to this project will be documented here.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-20
+
 ### Added
 
 - A GTK 4 control panel for status, start, preview, stop, preferences, artwork,
@@ -90,5 +92,6 @@ All notable changes to this project will be documented here.
   `AboutToLock` without `ActiveChanged(false)` cannot block idle launch.
 - Fedora/RHEL dependency hint now includes `python3-pip` and `python3-devel`.
 
-[Unreleased]: https://github.com/RobbyBobby77/kde-ascii-saver/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/RobbyBobby77/kde-ascii-saver/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/RobbyBobby77/kde-ascii-saver/releases/tag/v0.2.0
 [0.1.0]: https://github.com/RobbyBobby77/kde-ascii-saver/releases/tag/v0.1.0
